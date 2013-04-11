@@ -1,0 +1,94 @@
+<?php 
+
+function devtest_menu() {
+
+  $items['node/%node/proposal'] = array(
+    'title' => 'Proposal',
+    'page callback' => 'devtest_proposal',
+	'page arguments' => array(1),  // sends $node to the page callback function
+	'type' => MENU_LOCAL_TASK,
+	'access callback' => 'devtest_ct_type_is',
+	'access arguments' => array(1, 'course_version'),
+  );
+  $items['node/%node/vds'] = array(
+    'title' => 'Documentation set',
+    'page callback' => 'devtest_docset',
+	'page arguments' => array(1),  // sends $node to the page callback function
+	'type' => MENU_LOCAL_TASK,
+	'access callback' => TRUE,
+  );
+  $items['node/%node/email'] = array(
+    'title' => 'Email contributors',
+    'page callback' => 'devtest_docset',
+	'page arguments' => array(1),  // sends $node to the page callback function
+	'type' => MENU_LOCAL_TASK,
+	'access callback' => TRUE,
+  );
+  return $items;
+}
+
+function devtest_ct_type_is($node, $type) {
+
+  return ($node->type == $type) ? TRUE : FALSE;
+  
+}
+
+function devtest_proposal($cv_node) {
+  drupal_goto('node/' . $cv_node->field_proposal_ref[$cv_node->language][0]['target_id']);
+}
+
+function proposal_nid_to_arg() {
+  return 12;
+}
+
+/**
+ * Implements hook_node_view().
+ *
+ */
+function devtest_node_view($node, $view_mode, $langcode) {
+  switch ($node->type) {
+    case 'page':
+      $node->content['devtest_myfield'] = array(
+        '#type' => 'item',
+        '#title' => t('Just a label '),
+        '#markup' => '<p>Hello</p>',
+      );
+      break;
+  }
+}
+
+/**
+ * Implements hook_field_extra_fields().
+ *
+ * Declare pseudo fields added in hook_node_view so they
+ * appear on the /admin/structure/types/manage/page/display page
+ */
+function devtest_field_extra_fields() {
+  
+  // The levels of the array that we return correspond to the
+  // entity type, bundle and then either 'display' or 'form'.
+
+	$extra['node']['page']['form'] = array(
+    // The keys here must correspond to the keys of the items
+    // that we add in our hook_node_view().
+    // Prefix it with our module name to ensure it doesn't clash
+    // with anything from other modules.
+    'devtest_myfield' => array(
+      'label' => t('Myfield'),
+      'description' => t('Myfield added in devtest_node_view().'),
+      'weight' => 10,
+    ), 
+  );
+  return $extra;
+}
+
+function devtest_form_page_node_form_alter(&$form, $form_state) {
+
+  $form['devtest_myfield'] = array(
+    '#type' => 'item',  
+	'#title' => t('Affiliate editor options'),
+    '#markup' => '<p>Hello</p>',
+  );
+  dpm($form);
+
+}

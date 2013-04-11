@@ -1,0 +1,2239 @@
+<?php
+
+
+/**
+ * @return TRUE or FALSE
+ */
+function ccms_validation_required($cv_node) {
+
+  if (empty($cv_node->field_validation_required[$cv_node->language][0]['value'])) {
+    return FALSE;
+  } else {
+    return TRUE;
+  }
+}
+
+/**
+ *
+ */
+function ccms_menu() {
+  /* TODO remove. purely to invoke functions for test 
+  $items['devtest'] = array(
+    'type' => MENU_CALLBACK,
+    'page callback' => '_ccms_get_award_outline_info_table',
+    'access callback' => TRUE,
+  ); */
+  $items['message'] = array(
+    'type' => MENU_CALLBACK,
+    'page callback' => 'drupal_get_form',
+	'page arguments' => array('ccms_email_message_form'),
+    //'access callback' => TRUE,  defaults to user_access and uses the 'access arguments' below
+	// this stops spurious form submissions from anonymous
+	'access arguments' => array('access content'),
+  );
+  $items['node/add/next/course-version'] = array(
+    'type' => MENU_CALLBACK,
+    'page callback' => 'ccms_create_next_course_version',
+	'access arguments' => array('access content'),
+  );
+  $items['node/add/next/module-version'] = array(
+    'type' => MENU_CALLBACK,
+    'page callback' => 'ccms_create_next_module_version',
+	'access arguments' => array('access content'),
+  );
+  $items['node/archive'] = array(
+    'type' => MENU_CALLBACK,
+    'page callback' => 'ccms_archive_node',
+	'access arguments' => array('access content'),
+  );
+  $items['node/unarchive'] = array(
+    'type' => MENU_CALLBACK,
+    'page callback' => 'ccms_unarchive_node',
+	'access arguments' => array('access content'),
+  );
+  
+  // add menu_local_tasks to appropriate content types
+  $items['node/%node/status-history'] = array(
+    'title callback' => '_ccms_status_tab_title',
+	'title arguments' => array(1),
+    'page callback' => '_ccms_get_status_history_table',
+	'page arguments' => array(1),
+	'type' => MENU_LOCAL_TASK,
+	'access callback' => 'ccms_ct_type_is',
+	'access arguments' => array(1, array('course_version', 'proposal', 'validation_documentation_set')),
+	'weight' => 5,
+  ); 
+  $items['node/%node/update-status'] = array(
+    'title callback' => '_ccms_update_status_tab_title',
+	'title arguments' => array(1),
+    'page callback' => '_ccms_goto_update_status',
+	'page arguments' => array(1),
+	'type' => MENU_LOCAL_TASK,
+	'access callback' => '_ccms_show_update_status_task',
+	'access arguments' => array(1),
+	'weight' => 10,
+  );
+  $items['node/%node/proposal'] = array(
+    'title' => 'Proposal',
+    'page callback' => '_ccms_goto_proposal',
+	'page arguments' => array(1),  // sends $node to the page callback function
+	'type' => MENU_LOCAL_TASK,
+	'access callback' => 'ccms_ct_type_is', // only show tab on course_version content type
+	'access arguments' => array(1, array('course_version')),
+	'weight' => 20,
+  );
+  $items['node/%node/docset'] = array(
+    'title' => 'Quality Doc set',
+    'page callback' => '_ccms_goto_docset',
+	'page arguments' => array(1),  // sends $node to the page callback function
+	'type' => MENU_LOCAL_TASK,
+	'access callback' => 'ccms_ct_type_is',
+	'access arguments' => array(1, array('course_version')),
+	'weight' => 30,
+  );
+  $items['node/%node/changes'] = array(
+    // We use the standard node view with the inline differences block to 
+	// provide access to node revisions functionality.
+    // copied(ish) from core's node.module
+    'title' => 'Changes',
+    // The page callback also invokes drupal_set_title() in case
+    // the menu router's title is overridden by a menu link.
+    'page callback' => 'node_page_view',
+    'page arguments' => array(1),
+	'type' => MENU_LOCAL_TASK,
+    'access callback' => '_ccms_show_changes_task',
+    'access arguments' => array(1),
+	'weight' => 15,
+  );
+  $items['node/%node/printpdf'] = array(
+    'title' => 'PDF',
+    'page callback' => '_ccms_print_pdf',
+	'page arguments' => array(1),
+	'type' => MENU_LOCAL_TASK,
+	'access callback' => 'ccms_ct_type_is',
+	'access arguments' => array(1, array('proposal', 'validation_documentation_set', 'module_version')),
+	'weight' => 40,
+  );
+  $items['node/%node/email'] = array(
+    'title' => 'Email contributors',
+    'page callback' => 'drupal_get_form',
+	'page arguments' => array('ccms_email_message_form'),
+	'type' => MENU_LOCAL_TASK,
+	'access callback' => 'ccms_ct_type_is',
+	'access arguments' => array(1, array('course_version')),
+	'weight' => 40,
+  );
+  
+  return $items;
+}
+
+/**
+ * Helper function to decide whether to show the node/%/update-status menu local task.
+ * Only shows on specific content types and only to system admins or Drupal Administrator
+ *
+ * @return boolean
+ */
+function _ccms_show_update_status_task($node) {
+
+  if (in_array($node->type, array('course_version', 'proposal', 'validation_documentation_set'))) {
+    global $user;
+    if ($user->uid == 1 || in_array('CCMS system admins', array_values($user->roles))) {
+      return TRUE;
+	}
+  }
+  return FALSE;
+}
+
+/**
+ * Helper function to decide whether to grant access to the node/%/changes menu local task
+ */
+function _ccms_show_changes_task($node) {
+
+  if (!in_array($node->type, array('proposal', 'validation_documentation_set'))) {
+    return FALSE;
+  }
+  return _ccms_has_revisions($node);
+}
+
+/**
+ * Checks a node is one of an array of types
+ * Used by access callback for menu local tasks
+ */
+function ccms_ct_type_is($node, $ct_types) {
+  return (in_array($node->type, $ct_types)) ? TRUE : FALSE;  
+}
+
+/**
+ * Redirects to relevant proposal node page when the appropriate local task is clicked
+ * on a course version page
+ */
+function _ccms_goto_proposal($cv_node) {
+  drupal_goto('node/' . $cv_node->field_proposal_ref[$cv_node->language][0]['target_id']);
+}
+
+/**
+ * Redirects to relevant vds node page when the appropriate local task is clicked
+ * on a course version page
+ */
+function _ccms_goto_docset($cv_node) {
+  drupal_goto('node/' . $cv_node->field_vds_ref[$cv_node->language][0]['target_id']);
+}
+
+/**
+ * Redirects to the URL used by the Print module to output a PDF 
+ */
+function _ccms_print_pdf($node) {
+  drupal_goto('printpdf/' . $node->nid);
+}
+
+/**
+ *
+ */
+function _ccms_goto_update_status($node) {
+  
+  if ($node->type == 'course_version') {
+    $cv_nid = $node->nid;
+  }
+  else {
+    $cv_nid = _ccms_get_cv_nid($node);
+  }
+  
+  switch ($node->type) {
+    case 'course_version':
+      drupal_goto('node/add/' . 'cv-status-change/' . $cv_nid,  array('query' => array('destination' => 'node/' . $node->nid)));
+	  break;
+    case 'proposal':
+	  drupal_goto('node/add/' . 'proposal-status-change/' . $cv_nid, array('query' => array('destination' => 'node/' . $node->nid)));
+	  break;
+	case 'validation_documentation_set':
+      drupal_goto('node/add/' . 'vds-status-change/' . $cv_nid,  array('query' => array('destination' => 'node/' . $node->nid)));
+	  break;
+  }
+}
+
+/**
+ *
+ */
+function _ccms_status_tab_title($node) {
+  switch ($node->type) {
+    case 'course_version':
+	  $node_type_human = 'Course';
+	  break;
+	case 'proposal':
+	  $node_type_human = 'Proposal';
+	  break;
+	case 'validation_documentation_set':
+	  $node_type_human = 'Doc set';
+	  break;
+  }
+  return $node_type_human . ' status history';
+}
+/**
+ *
+ */
+function _ccms_update_status_tab_title($node) {
+  switch ($node->type) {
+    case 'course_version':
+	  $node_type_human = 'course';
+	  break;
+	case 'proposal':
+	  $node_type_human = 'proposal';
+	  break;
+	case 'validation_documentation_set':
+	  $node_type_human = 'doc set';
+	  break;
+  }
+  return 'Update ' . $node_type_human . ' status';
+}
+
+/**
+ * Implements hook_menu_alter() 
+ *
+ * Change Drupal default menu local tasks titles ( tab text )
+ */
+function ccms_menu_alter(&$items) {
+  $items['node/%node/view']['title callback'] = '_ccms_local_task_title_override';
+  $items['node/%node/view']['title arguments'] = array(1, 'View');
+
+  $items['node/%node/edit']['title callback'] = '_ccms_local_task_title_override';
+  $items['node/%node/edit']['title arguments'] = array(1, 'Update');
+  
+  $items['node/%node/revisions']['access callback'] = FALSE; // we don't want to see standard revisions menu_local_task
+  //$items['node/%node/devel']['access callback'] = FALSE; // we don't want to see the devel menu_local_task
+}
+
+/**
+ * Return altered menu local task tab title
+ *
+ * @return string
+ */
+function _ccms_local_task_title_override($node, $existing_title) {
+  $node_type_human = NULL;
+  switch ($node->type) {
+    case 'course_version':
+	  $node_type_human = 'course';
+	  break;
+	case 'proposal':
+	  $node_type_human = 'proposal';
+	  break;
+	case 'validation_documentation_set':
+	  $node_type_human = 'doc set';
+	  break;
+	case 'module_version':
+	  $node_type_human = 'module';
+	  break;
+  }
+  if ($node_type_human) {
+    return $existing_title . ' ' . $node_type_human;
+  } else {
+    return $existing_title;
+  }
+}
+
+/**
+ * Archive ( i.e. unpublish ) a course version or module version
+ */
+function ccms_archive_node($nid = NULL) {
+
+  $node = node_load($nid);
+  if ((!$node) || 
+      (($node->type <> 'course_version') &&
+      ($node->type <> 'module_version'))) {
+	  drupal_set_message('Archive requested for incorrect node or node type', 'error');
+    return;
+  }
+  
+  $node->status = 0;
+  node_save($node);
+  if ($node->type == 'course_version') {
+    drupal_goto('all-course-versions-archive');
+  } elseif ($node->type == 'module_version') {
+    drupal_goto('all-module-versions-archive');
+  }
+}
+
+/**
+ *
+ */
+function ccms_unarchive_node($nid = NULL) {
+
+  $node = node_load($nid);
+  if ((!$node) || 
+      (($node->type <> 'course_version') &&
+      ($node->type <> 'module_version'))) {
+	  drupal_set_message('Archive requested for incorrect node or node type', 'error');
+    return;
+  }
+  
+  $node->status = 1;
+  node_save($node);
+  if ($node->type == 'course_version') {
+    drupal_goto('all-course-versions');
+  } elseif ($node->type == 'module_version') {
+    drupal_goto('all-module-versions');
+  }
+}
+
+/**
+ * Implements hook_node_insert
+ */
+function ccms_node_insert($node) {
+
+  switch ($node->type) {
+  
+    // when a new cv_status_change has been created update the relevant course_version
+	// to point to it  
+    case 'cv_status_change':
+      //we link to this form always with the parent course_version nid in the URL i.e. node/add/cv-status-change/123
+	  //if we are creating programatically ( i.e. new course version ) there is no 3rd URL parameter so do nothing
+      if ($cv_node = node_load(arg(3))) {
+	    $cv_node->field_cv_status_changes_ref[$cv_node->language][]['target_id'] = $node->nid;  // reference the status change from the course_version
+	    node_save($cv_node);
+	    // send email notification of the status change to all referenced parties
+        ccms_send_status_updated_mail($node, $cv_node);
+      }		
+	  break;
+    case 'proposal_status_change':
+	  if ($cv_node = node_load(arg(3))) {
+	    $cv_node->field_prop_status_changes_ref[$cv_node->language][]['target_id'] = $node->nid;  // reference the status change from the course_version
+	    node_save($cv_node);
+	   // send email notification of the status change to all referenced parties
+        ccms_send_status_updated_mail($node, $cv_node);
+      }
+	  break;
+	case 'vds_status_change':
+	  if ($cv_node = node_load(arg(3))) {
+	    $cv_node->field_vds_status_changes_ref[$cv_node->language][]['target_id'] = $node->nid;  // reference the status change from the course_version
+	    node_save($cv_node);
+	    // send email notification of the status change to all referenced parties
+        ccms_send_status_updated_mail($node, $cv_node);
+      }		
+	  break;
+	case 'module_version':
+	  if ($prev_module_node = node_load(arg(4))) {  // url formed by node/add/next/module-version/nidif there is no arg 3 then it must be a brand new node so do none of this
+	    $prev_module_node->field_next_module_version_ref[$prev_module_node->language][0]['target_id'] = $node->nid;
+		node_save($prev_module_node);
+	  }
+  }
+}
+
+/**
+ * Implements hook_node_presave
+ */
+function ccms_node_presave($node) {
+
+  /* When a new *initial* V1 course version is created by a user completing
+   * the node form also :
+   *  - create and link to a new cv_status_change node
+   *  - create and link a new proposal node
+   *  - create and link a new proposal_status_change node
+   *  - create and link a new VDS node
+   *  - create and link a new vds_status_change node
+   **/
+
+  if ($node->type == 'course_version' && $node->is_new && $node->field_version[$node->language][0]['value'] == 1) {
+  
+    // add version to title
+	$node->title .= ' ( version ' . $node->field_version[$node->language][0]['value'] . ' )';
+  
+    // create a new cv_status_change node
+    $new_cv_status_change_nid = ccms_create_status_node('cv_status_change',
+                                                           'Status change to course version "' . $node->title . '"');
+
+    // link to new cv_status change
+    $node->field_cv_status_changes_ref[$node->language][0]['target_id'] = $new_cv_status_change_nid;
+    
+    // create a new proposal node
+    $new_proposal = new stdClass();
+    $new_proposal->type = 'proposal';
+    node_object_prepare($new_proposal);
+    $new_proposal->title = 'Proposal for course version "' . $node->title . '"';
+    $new_proposal->language = LANGUAGE_NONE; // Set node language to ‘und’
+    $new_proposal->status = 1;
+    $new_proposal->promote = 0;
+
+    node_save($new_proposal);
+    
+    // link the cv to the new proposal
+    $node->field_proposal_ref[$node->language][0]['target_id'] = $new_proposal->nid;
+    
+    // create a new proposal_status_change node
+    $new_proposal_status_change_nid = ccms_create_status_node('proposal_status_change',
+                                                                 'Status change to the proposal for course version "' . $node->title . '"');
+    
+    // link to new proposal_status change
+    $node->field_prop_status_changes_ref[$node->language][0]['target_id'] = $new_proposal_status_change_nid;
+    
+    // create a new VDS node
+    $new_vds = new stdClass();
+    $new_vds->type = 'validation_documentation_set';
+    node_object_prepare($new_vds);
+    $new_vds->title = 'Quality doc for course version "' . $node->title . '"';
+    $new_vds->language = LANGUAGE_NONE; // Set node language to ‘und’
+    $new_vds->status = 1;
+    $new_vds->promote = 0;
+
+    node_save($new_vds);
+    
+    // link to the new VDS
+    $node->field_vds_ref[$node->language][0]['target_id'] = $new_vds->nid;
+    
+    // create a new vds_status_change node
+    $new_vds_status_change_nid = ccms_create_status_node('vds_status_change',
+                                                         'Status change to the Doc Set for course version "' . $node->title . '"');
+    
+    // link to new vds_status change
+    $node->field_vds_status_changes_ref[$node->language][0]['target_id'] = $new_vds_status_change_nid;
+
+  } elseif ($node->type == 'module_version' && $node->is_new) {
+      if (!isset($node->field_prev_module_version_ref[$node->language][0]['target_id'])) {  // this is the first version of a new module
+        $node->title = $node->title . ' ( Version ' . $node->field_version[$node->language][0]['value'] . ' )';
+      } else {  //This is a new version of an existing module so replace existing version string
+	     $node->title = preg_replace('/\(([^}]+)\)/', '( Version ' . $node->field_version[$node->language][0]['value'] . ' )', $node->title);
+	  }
+  }
+  
+  // we always copy the user reference fields from the CV to the proposal and VDS
+  // capture any changes that use 'node access user reference' to grant access to the relevant proposal and VDS nodes
+  if ($node->type == 'course_version') {
+     $proposal = node_load($node->field_proposal_ref[$node->language][0]['target_id']);
+	 $vds = node_load($node->field_vds_ref[$node->language][0]['target_id']);
+	 $proposal->field_grant_proposal_update_ref = $node->field_grant_proposal_update_ref;
+	 $vds->field_grant_vds_update_ref = $node->field_grant_vds_update_ref;
+     node_save($proposal);
+	 node_save($vds);
+  }  
+}
+
+/**
+ * Create a new status node of the appropriate type
+ * and return the nid
+ */
+function ccms_create_status_node($type, $title) {
+
+  $new_status_change = new stdClass();
+  $new_status_change->type = $type;
+  $new_status_change->title = $title;
+  node_object_prepare($new_status_change);
+  $new_status_change->language = LANGUAGE_NONE;
+  $new_status_change->status = 1;
+  $new_status_change->promote = 0;
+  
+  switch ($type) {
+    case 'cv_status_change':
+    $new_status_change->field_cv_status_change[$new_status_change->language][0]['value'] = 'not_commenced';
+    break;
+    case 'proposal_status_change':
+      $new_status_change->field_proposal_status_change[$new_status_change->language][0]['value'] = 'not_commenced';
+      break;
+    case 'vds_status_change':
+    $new_status_change->field_vds_status_change[$new_status_change->language][0]['value'] = 'not_commenced';
+    break;
+  }      
+
+  node_save($new_status_change);
+  return $new_status_change->nid;
+}
+
+/**
+ * Creates a new course version as a (near) replica of the
+ * version passed as a param and create appropriate links
+ **/
+function ccms_create_next_course_version($original_cv_nid) {
+
+  $original_cv = node_load($original_cv_nid);  //returns FALSE if node not found
+  
+  if (!$original_cv) {
+    drupal_set_message('Unable to load original course version.', 'warning');
+    drupal_goto('all-course-versions');
+  } elseif (!empty($original_cv->field_next_course_version_ref)) {
+    drupal_set_message('Aborted. Next course version already exists.', 'warning');
+    drupal_goto('all-course-versions');
+  } elseif (FALSE) {
+    // TODO check that the status is appropriate for generating a new CV
+    drupal_set_message('Aborted. Not allowed to create a new course version when the current status is \'In development\'.', 'warning');
+    drupal_goto('all-course-versions');
+  }
+  
+  // we're good to go
+  // create a new course version
+  $new_cv = clone $original_cv;
+  unset($new_cv->nid);
+  unset($new_cv->vid);
+  unset($new_cv->created);
+  
+  $new_cv->field_version[$new_cv->language][0]['value']++;  // inc the version
+  $new_cv->title = preg_replace('/\(.+\)/', '( version ' . $new_cv->field_version[$new_cv->language][0]['value'] . ' )', $new_cv->title);
+  unset($new_cv->field_cv_status_changes_ref[$new_cv->language]);  //remove the refs to the status change nodes
+  unset($new_cv->field_next_course_version_ref);
+  $new_cv->field_prev_course_version_ref[$new_cv->language][0]['target_id'] = $original_cv_nid;
+
+  // create a new cv_status_change node and link to it
+  $new_cv->field_cv_status_changes_ref[$new_cv->language][]['target_id'] = ccms_create_status_node('cv_status_change',
+                                                                                                   'Status change to course version "' . $new_cv->title . '"');
+  node_save($new_cv);    
+
+  // load the related nodes so we can clone them
+  $original_proposal = node_load($original_cv->field_proposal_ref[$original_cv->language][0]['target_id']);
+  $original_vds = node_load($original_cv->field_vds_ref[$original_cv->language][0]['target_id']);
+
+  if (!$original_vds || !$original_proposal) {
+    drupal_set_message('Unable to load original proposal and/or validation doc set. Cleaning up and aborting creation of new course version', 'warning');
+    ccms_del_course_version($new_cv);
+    return;
+  }
+    
+  // create and setup a new proposal node
+  $new_proposal = clone $original_proposal;
+  unset($new_proposal->nid);
+  unset($new_proposal->vid);
+  unset($new_proposal->created);
+  
+  $new_proposal->title = preg_replace('/\(.+\)/', '( version ' . $new_cv->field_version[$new_cv->language][0]['value'] . ' )', $new_proposal->title);
+  
+  // create a new proposal_status_change node and link to it
+  $new_cv->field_prop_status_changes_ref[$new_proposal->language][]['target_id'] = ccms_create_status_node('proposal_status_change',
+                                                                                                             'Status change to the proposal for course version "' . $new_cv->title . '"');           
+  node_save($new_proposal);
+  
+  // create and setup a new validation doc set node
+  $new_vds = clone $original_vds;
+  unset($new_vds->nid);
+  unset($new_vds->vid);
+  unset($new_vds->created);
+  
+  $new_vds->title = preg_replace('/\(.+\)/', '( version ' . $new_cv->field_version[$new_cv->language][0]['value'] . ' )', $new_vds->title);
+  
+  // create new versions of the attached files
+  
+  // file field 'field_curriculum_structure' ( with comments )
+  if (isset($new_vds->field_curriculum_structure[$new_vds->language][0]['fid'])) {  // don't bother if there is no file
+    $file_obj = file_load($new_vds->field_curriculum_structure[$new_vds->language][0]['fid']);
+    if ($file_obj) {
+      $file_obj_copy = file_copy($file_obj, 'public://vds-attachments', 'FILE_EXISTS_RENAME');
+      if ($file_obj_copy) {
+	    // add in some fields that seem to appear in the original field but not the cloned file object.
+	    // no idea what they do but we'll play safe
+        $file_obj_copy->display = '1';
+	    $file_obj_copy->rdf_mapping = array();
+	    $file_obj_copy->description = '';
+	    // casting the obj to an array works but some of the string keys become integers however
+        // the node_save subsequently fixes this
+        $new_vds->field_curriculum_structure[$new_vds->language][0] = (array) $file_obj_copy;
+      }
+    }
+  }
+  // file field 'field_award_map'
+  if (isset($new_vds->field_award_map[$new_vds->language][0]['fid'])) {
+    $file_obj = file_load($new_vds->field_award_map[$new_vds->language][0]['fid']);
+    if ($file_obj) {
+      $file_obj_copy = file_copy($file_obj, 'public://vds-attachments', 'FILE_EXISTS_RENAME');
+      if ($file_obj_copy) {
+        $file_obj_copy->display = '1';
+	    $file_obj_copy->rdf_mapping = array();
+	    $file_obj_copy->description = '';
+        $new_vds->field_award_map[$new_vds->language][0] = (array) $file_obj_copy;
+      }
+    }
+  }
+  // file field 'field_programme_handbook'
+  if (isset($new_vds->field_programme_handbook[$new_vds->language][0]['fid'])) {
+    $file_obj = file_load($new_vds->field_programme_handbook[$new_vds->language][0]['fid']);
+    if ($file_obj) {
+      $file_obj_copy = file_copy($file_obj, 'public://vds-attachments', 'FILE_EXISTS_RENAME');
+      if ($file_obj_copy) {
+        $file_obj_copy->display = '1';
+	    $file_obj_copy->rdf_mapping = array();
+	    $file_obj_copy->description = '';
+        $new_vds->field_programme_handbook[$new_vds->language][0] = (array) $file_obj_copy;
+      }
+    }
+  }
+  // file field misc_associated_docs
+  if (isset($new_vds->field_misc_associated_docs[$new_vds->language][0]['fid'])) {
+    $file_obj = file_load($new_vds->field_misc_associated_docs[$new_vds->language][0]['fid']);
+    if ($file_obj) {
+      $file_obj_copy = file_copy($file_obj, 'public://vds-attachments', 'FILE_EXISTS_RENAME');
+      if ($file_obj_copy) {
+        $file_obj_copy->display = '1';
+	    $file_obj_copy->rdf_mapping = array();
+	    $file_obj_copy->description = '';
+        $new_vds->field_misc_associated_docs[$new_vds->language][0] = (array) $file_obj_copy;
+      }
+    }
+  }
+      
+  // create a new vds_status_change node and link to it
+  $new_vds->field_vds_status_changes_ref[$new_vds->language][]['target_id'] = ccms_create_status_node('vds_status_change',
+                                                                                                      'Status change to the VDS for course version "' . $new_cv->title . '"');  
+  node_save($new_vds);  // with no nid will create a new node
+    
+  // now we have the related nodes set the ref fields on the new course version and save
+  $new_cv->field_proposal_ref[$new_cv->language][0]['target_id'] = $new_proposal->nid;
+  $new_cv->field_vds_ref[$new_cv->language][0]['target_id'] = $new_vds->nid;
+  
+  // set the next and previous references between course versions
+  $original_cv->field_next_course_version_ref[$original_cv->language][0]['target_id'] = $new_cv->nid;
+  $new_cv->field_prev_course_version_ref[$new_cv->language][0]['target_id'] = $original_cv->nid;
+  
+  node_save($original_cv);
+  node_save($new_cv);
+  drupal_set_message('Successfully created new course version.', 'status');
+  drupal_goto('all-course-versions');
+}
+
+function ccms_create_next_module_version($original_module_nid) {
+
+  $original_module = node_load($original_module_nid);  //returns FALSE if node not found
+  
+  if (!$original_module) {
+    drupal_set_message('Aborted. Unable to load original module version.', 'warning');
+    drupal_goto('all-module-versions');
+  } elseif (!empty($original_cv->field_next_course_version_ref)) {
+    drupal_set_message('Aborted. Next module version already exists.', 'warning');
+    drupal_goto('all-module-versions');
+  } elseif (FALSE) {
+    // TODO check that the status is appropriate for generating a new module
+    drupal_set_message('Aborted. Not permitted to create a new module version when the current status is \'In development\'.', 'warning');
+    drupal_goto('all-module-versions');
+  }
+  
+  // we're good to go
+  // create a new clone module version
+  $new_module = clone $original_module;
+  unset($new_module->nid);
+  unset($new_module->vid);
+  unset($new_module->created);
+  $new_module->field_version[$new_module->language][0]['value']++;  // inc the version
+  unset($new_module->field_next_course_version_ref);
+  $new_module->field_prev_module_version_ref[$new_module->language][0]['target_id'] = $original_module_nid;
+  $new_module->field_module_status[$new_module->language][0]['value'] = 'not_commenced';
+  
+  // replicate attached files
+  if (isset($new_module->field_assessment_method_table[$new_module->language][0]['fid'])) {
+    $file_obj = file_load($new_module->field_assessment_method_table[$new_module->language][0]['fid']);
+    if ($file_obj) {
+      $file_obj_copy = file_copy($file_obj, 'public://module-attachments', 'FILE_EXISTS_RENAME');
+      if ($file_obj_copy) {
+        $file_obj_copy->display = '1';
+	    $file_obj_copy->rdf_mapping = array();
+	    $file_obj_copy->description = '';
+        $new_module->field_assessment_method_table[$new_module->language][0] = (array) $file_obj_copy;
+      }
+    }
+  }
+ 
+  node_save($new_module);
+  drupal_set_message('Successfully created new module version.', 'status');
+  drupal_goto('all-module-versions');
+}
+
+/**
+ * Implements hook_node_delete
+ */
+function ccms_node_delete($node) {
+
+  switch ($node->type) {
+   
+    case 'course_version':
+	  // Remove all nodes associated with this course version and unset references to it.
+	  
+	  // The system shouldn't allow the user to see a delete link unless it is appropriate for deletion to occur.
+	  // This code can potentially therefore remove 'links' in a string of related course versions.
+
+      // first unlink any previous course version
+	  if (isset($node->field_prev_course_version_ref[$node->language][0]['target_id'])) {
+        $prev_cv = node_load($node->field_prev_course_version_ref[$node->language][0]['target_id']);
+          if ($prev_cv) {
+          unset($prev_cv->field_next_course_version_ref);
+          node_save($prev_cv);
+          }
+	  }
+	  
+	  // now unlink any subsequent version
+	  if (isset($node->field_next_course_version_ref[$node->language][0]['target_id'])) {
+	    $next_cv = node_load($node->field_next_course_version_ref[$node->language][0]['target_id']);
+        if ($next_cv) {
+          unset($next_cv->field_next_course_version_ref);
+          node_save($next_cv);
+        }
+	  }
+	  
+	  // the course-version status change nodes
+	  foreach ($node->field_cv_status_changes_ref[$node->language] as $ref) {
+	    node_delete($ref['target_id']);
+	  }
+  
+      // we're good to delete
+      
+	  // the proposal
+      node_delete($node->field_proposal_ref[$node->language][0]['target_id']);
+	  
+	  // the proposal status change nodes
+	  foreach ($node->field_prop_status_changes_ref[$node->language] as $ref) {
+	    node_delete($ref['target_id']);
+	  }
+      // the vds
+      node_delete($node->field_vds_ref[$node->language][0]['target_id']);
+	  
+	  // the vds status change nodes
+	  foreach ($node->field_vds_status_changes_ref[$node->language] as $ref) {
+	    node_delete($ref['target_id']);
+	  }
+	  
+	  break;
+  }
+}
+
+/**
+ * Returns the key of the current status of a 'course_version' element ( including course version itself )
+ */
+function ccms_get_current_status($cv_nid, $element) {
+
+  if (!$cv_node = node_load($cv_nid)) {
+    drupal_set_message('Status requested for unknown node id', 'status');
+	return FALSE;
+  }
+  if ($cv_node->type <> 'course_version') {
+    drupal_set_message('Status requested using no course version node type', 'status');
+	return FALSE;
+  }
+
+  switch ($element) {
+  
+    case 'course_version':    
+      end($cv_node->field_cv_status_changes_ref[$cv_node->language]);
+      $last_key = current($cv_node->field_cv_status_changes_ref[$cv_node->language]);
+      $status_change_node = node_load($last_key['target_id']);
+      return $status_change_node->field_cv_status_change[$status_change_node->language][0]['value'];
+	  break;
+      
+    case 'proposal':
+      end($cv_node->field_prop_status_changes_ref[$cv_node->language]);
+      $last_key = current($cv_node->field_prop_status_changes_ref[$cv_node->language]);
+      $status_change_node = node_load($last_key['target_id']);
+      return $status_change_node->field_proposal_status_change[$status_change_node->language][0]['value'];
+	  break;
+      
+    case 'validation_documentation_set':
+      end($cv_node->field_vds_status_changes_ref[$cv_node->language]);
+      $last_key = current($cv_node->field_vds_status_changes_ref[$cv_node->language]);
+      $status_change_node = node_load($last_key['target_id']);
+      return $status_change_node->field_vds_status_change[$status_change_node->language][0]['value'];
+      break;
+  } /* switch */
+}
+
+/*
+ * Returns an HTML <table> ( no wrapper )  containing the status history for course version element
+ * ( where element is course_version, proposal, vds )
+ *
+ * @return string or NULL
+ */
+function _ccms_get_status_history_table($node) {
+
+  // exit if this isn't the correct node type
+  if (!in_array($node->type, array('course_version', 'proposal', 'validation_documentation_set'))) {
+    drupal_set_message('Status information requested in get_status_change_table() for incorrect node type');
+    return NULL;
+  }
+  
+  // setup the correct field names
+  switch ($node->type) {
+    case 'course_version':
+	  $ref_field = 'field_cv_status_changes_ref';
+	  $status_change_propertyname = 'field_cv_status_change';
+	  break;
+	case 'proposal':
+	  $ref_field = 'field_prop_status_changes_ref';
+	  $status_change_propertyname = 'field_proposal_status_change';
+	  break;
+	case 'validation_documentation_set':
+	  $ref_field = 'field_vds_status_changes_ref';
+	  $status_change_propertyname = 'field_vds_status_change';
+	  break;
+  }
+  // find and load the course version node if we have been passed a proposal or VDS node
+  if ($node->type == 'course_version') {
+    $cv_node = $node;
+  } else {  // must be a proposal or vds
+    $cv_nid = _ccms_get_cv_nid($node);
+    $cv_node = node_load($cv_nid);
+  }
+  
+  global $base_url;
+  // TODO: Use theme_table()
+  // build the HTML table
+  $table = '<table class="status_change_table"><tr><th>Changed</th><th>Author</th><th>Original status</th><th></th><th>New status</th><th>Notes</th>';
+  
+  $prev_status = '';
+  
+  foreach ($cv_node->{$ref_field}[$cv_node->language] as $ref) {
+    $change_node = node_load($ref['target_id']);
+	$account = user_load($change_node->uid); // uid is node creator
+    $table .= '<tr>';
+    $table .= '<td>' . format_date($change_node->changed, 'Medium') . '</td>';
+    $table .= '<td>' . format_username($account) . '</td>';  // hook changes username to full name if it exists
+    $table .= '<td>' . $prev_status . '</td>';
+    $table .= '<td>' . '>>' . '</td>';
+    $table .= '<td>' . ccms_get_status_label($change_node->{$status_change_propertyname}[$change_node->language][0]['value']) . '</td>';
+	$prev_status = ccms_get_status_label($change_node->{$status_change_propertyname}[$change_node->language][0]['value']); //grab for next iteration
+    $table .= '<td>';
+    if (isset($change_node->field_notes[$change_node->language][0]['value'])) {
+      $table .= '<a class="colorbox-node" href="' . $base_url . '/node/' . $change_node->nid . '">View notes</a>';
+    } else {
+	  $table .= 'No notes';
+	}
+    $table .= '</td>';
+
+  }
+  $table .= '</tr></table>';
+  return $table;
+}
+
+/**
+ * returns the human readable version of a status key
+ */
+function ccms_get_status_label($key) {
+  switch ($key) {
+    case 'not_commenced':
+	  return 'Development not yet commenced';	
+	  break;
+	case 'in_dev':
+	  return 'In development';
+	  break;
+	case 'submitted_for_approval':
+	  return 'Submitted for approval';
+	  break;
+	case 'definitive':
+	  return 'Definitive';
+	  break;
+	case 'superseded':
+	  return 'Superseded';
+	  break;
+	case 'suspended':
+	  return 'Suspended';
+	  break;
+	case 'ceased':
+	  return 'Ceased';
+	  break;
+	case 'conditionally_approved':
+	  return 'Conditionally approved';
+	  break;
+	case 'approved':
+	  return 'Approved';
+	  break;
+	case 'rejected':
+	  return 'Rejected';
+	  break;
+	case 'prelim_in_dev':
+	  return 'In development ( preliminary phase )';
+	  break;
+	case 'prelim_submitted_for_approval':
+	  return 'Submitted for approval ( preliminary phase )';
+	  break;
+	case 'prelim_resubmission':
+	  return 'Resubmission required ( preliminary phase )';
+	  break;
+	case 'prelim_approved':
+	  return 'Approved ( preliminary phase )';
+	  break;
+	case 'final_in_dev':
+	  return 'In development ( final phase )';
+	  break;
+	case 'final_submitted_for_approval':
+	  return 'Submitted for approval ( final phase )';
+	  break;
+	case 'final_approved':
+	  return 'Approved ( final phase )';
+	  break;
+	case 'final_conditionally_approved':
+	  return 'Conditionally approved ( final phase )';
+	  break;
+	case 'final_resubmission':
+	  return 'Resubmission required ( final phase )';
+	  break;
+  }
+  return 'Unknown status';
+}
+
+/**
+ * Check if a specific UID is allowed to update a course_version
+ *
+ * @return TRUE or FALSE
+ */
+function ccms_cv_update_permitted($uid) {
+
+  // if we're Drupal admin or a CCMS administrator we always have permission
+  $u = user_load($uid);
+  if ($uid == 1 || in_array('CCMS system admins', array_values($u->roles))) {
+    return TRUE;
+  } else {
+    return FALSE;
+  }
+}
+
+/**
+ * Check if a specific UID is allowed to update a course_version's proposal
+ *
+ * @return TRUE or FALSE
+ */
+function ccms_proposal_update_permitted($cv_nid, $uid) {
+  
+  // if we're Drupal admin or a CCMS administrator we always have permissions
+  $u = user_load($uid);
+  if ($uid == 1 || in_array('CCMS system admins', array_values($u->roles))) {
+    return TRUE;
+  }
+
+  $cv_node = node_load($cv_nid);
+  $permitted = array();
+  if (isset($cv_node->field_grant_proposal_update_ref[$cv_node->language])) { // make sure someone is referenced
+    foreach ($cv_node->field_grant_proposal_update_ref[$cv_node->language] as $ref) {
+      $permitted[] = $ref['target_id'];
+     }
+    if (in_array($uid, $permitted)) {
+      return TRUE;
+    } else {
+      return FALSE;
+    }
+  }
+}
+
+/**
+ * Check if a specific UID is allowed to update a course_version's VDS
+ *
+ * @return TRUE or FALSE
+ */
+function ccms_vds_update_permitted($cv_nid, $uid) {
+
+  // if we're Drupal admin or a CCMS administrator we always have permissions
+  $u = user_load($uid);
+  if ($uid == 1 || in_array('CCMS system admins', array_values($u->roles))) {
+    return TRUE;
+  }
+
+  $cv_node = node_load($cv_nid);
+  $permitted = array();
+  if (isset($cv_node->field_grant_vds_update_ref[$cv_node->language])) {  // make sure someone is referenced
+    foreach ($cv_node->field_grant_vds_update_ref[$cv_node->language] as $ref) {
+      $permitted[] = $ref['target_id'];
+    }
+    if (in_array($uid, $permitted)) {
+      return TRUE;
+    } else {
+      return FALSE;
+    }
+  }
+}
+
+/**
+* Users with role
+*
+* @param $role mixed The name or rid of the role we're wanting users to have
+* @param $active_user boolean Only return active ie. non blocked accounts
+*
+* @return array An array of user objects with the role
+*/
+function ccms_get_users_with_role($role, $active_user = TRUE) {
+  $uids = array();
+  $users = array();
+  if (is_int($role)) {
+    $my_rid = $role;
+    }
+    else {
+      $my_rid = user_role_load_by_name($role);  // returns a role object
+	  	if (empty($my_rid)) {
+	      drupal_set_message('Users requested for non-existent role', 'error');
+		}
+    }
+
+    $result = db_select('users_roles', 'ur')
+      ->fields('ur')
+      ->condition('ur.rid', $my_rid->rid, '=')
+      ->execute();
+    foreach ($result as $record) {
+      $uids[] = $record->uid;
+    };
+    $query = new EntityFieldQuery();
+    $query->entityCondition('entity_type', 'user')
+          ->propertyCondition('uid', $uids, 'IN');
+    if ($active_user) {
+      $query->propertyCondition('status', 1);
+    }
+    $entities = $query->execute();
+    if (!empty($entities)) {
+      $users = entity_load('user', array_keys($entities['user']));
+    }
+    return $users;
+}
+
+/**
+ *
+ */
+function ccms_send_status_updated_mail($status_change_node = NULL, $cv_node) {
+    
+  if (!$status_change_node || !in_array($status_change_node->type, array('cv_status_change', 'proposal_status_change', 'vds_status_change'))) {
+    drupal_set_message('Status update email notifications requested for incorrect node type.', 'error');
+    return;
+  }  
+  
+  $key = $status_change_node->type . '_updated';
+  $module = 'ccms';
+  $to =  ccms_get_email_update_addresses($cv_node);
+  $from = 'ccms-no-reply@fal.ac.uk';
+  $language = language_default();
+  $send = TRUE;
+  
+  // pass through params to hook_mail to generate email message
+  $params = array();
+  $params['node_type'] = $status_change_node->type;
+  $params['cv_title'] = $cv_node->title;
+  switch ($status_change_node->type) {
+   
+    case 'cv_status_change':
+      $params['new_status'] = ccms_get_status_label($status_change_node->field_cv_status_change[$status_change_node->language][0]['value']);
+      break;
+	
+	case 'proposal_status_change':
+	  $params['new_status'] = ccms_get_status_label($status_change_node->field_proposal_status_change[$status_change_node->language][0]['value']);
+	  break;
+	
+	case 'vds_status_change':
+	  $params['new_status'] = ccms_get_status_label($status_change_node->field_vds_status_change[$status_change_node->language][0]['value']);
+	  break;
+  }
+
+  $result = drupal_mail($module, $key, $to, $language, $params, $from, $send);
+  if ($result['result'] == TRUE) {
+    drupal_set_message('Emails successfully sent notifying interested parties ( ' . $to . ' ) of the status update.');
+  }
+  else {
+    drupal_set_message('There was a problem sending the email notifications.', 'error');
+  }
+}
+
+/**
+ *
+ */
+function ccms_mail($key, &$message, $params) {
+
+  switch ($key) {
+
+    case 'cv_status_change_updated':
+      $message['subject'] = 'CCMS Notification of Course Version status update';
+      $message['body'][] = 'The Course version status of course version "' . $params['cv_title'] . '" has been updated to "' . $params['new_status'] . '"';
+      break;
+
+    case 'proposal_status_change_updated':
+      $message['subject'] = 'CCMS Notification of Proposal status update';
+      $message['body'][] = 'The Proposal status of course version "' . $params['cv_title'] . '" has been updated to "' . $params['new_status'] . '"';
+      break;
+	
+    case 'vds_status_change_updated':
+      $message['subject'] = 'CCMS Notification of Validation Doc Set status update';
+      $message['body'][] = 'The validation doc set status of course version "' . $params['cv_title'] . '" has been updated to "' . $params['new_status'] . '"';
+      break;
+    }
+  $message['body'][] = 'You can access the CCMS system at http://ccms.fal.ac.uk';
+}
+
+/**
+ * @return a comma separated string of email addresses
+ */
+function ccms_get_email_update_addresses($cv_node) {
+
+  // the 'to' list is all the proposal and vds contributors, the 'CCMS system admins' role members,
+  // and the email addresses specifically entered into the email updates field on the CV
+  
+  //first grab the email addresses of the users with the 'CCMS system admins' role
+  $users = ccms_get_users_with_role('CCMS system admins');  // gets user nodes
+  if (isset($users)) {
+    foreach ($users as $account) {
+	  $emails[] = $account->mail;
+	}
+  }
+  // now grab the list of email addresses flagged in the course version as receiving updates.
+  if (isset($cv_node->field_send_email_updates[$cv_node->language])) {
+    foreach ($cv_node->field_send_email_updates[$cv_node->language] as $email_address) {
+	  $emails[] = $email_address['email'];
+	}
+  }
+  // now grab the email addresses of the users who have proposal update rights
+  if (isset($cv_node->field_grant_proposal_update_ref[$cv_node->language])) {
+    foreach ($cv_node->field_grant_proposal_update_ref[$cv_node->language] as $u_ref) {
+	  $account = user_load($u_ref['target_id']);
+	  $emails[] = $account->mail;
+	}
+  }
+  // now grab the email addresses of the users who have vds update rights
+    if (isset($cv_node->field_grant_vds_update_ref[$cv_node->language])) {
+    foreach ($cv_node->field_grant_vds_update_ref[$cv_node->language] as $u_ref) {
+	  $account = user_load($u_ref['target_id']);
+	  $emails[] = $account->mail;
+	}
+  }
+  $unique_emails = array_unique($emails);  // remove duplicate email addresses
+  $email_addresses_string = '';
+  foreach ($unique_emails as $email) {
+    $email_addresses_string .= ',' . $email;
+  }
+  $email_addresses_string = ltrim($email_addresses_string, ',');
+
+  return $email_addresses_string;
+}
+
+/**
+ *
+ */
+function ccms_form_proposal_node_form_alter(&$form, &$form_state, $form_id) {
+
+  //$form['title']['#disabled'] = TRUE;  // still visible and submits
+  $form['title']['#access'] = FALSE;
+  $form['field_grant_proposal_update_ref']['#access'] = FALSE;
+  $form['actions']['submit']['#value'] = 'Save (create new version of form)'; // rename existing button
+
+ $form['actions']['secondsubmit'] = array(
+        '#type' => 'submit',
+        '#value' => t('Save (overwrite current form)'),
+        '#weight' => 4,
+        '#validate' => array('node_form_validate'),
+        // Use default and an additional submit handler.
+        '#submit' => array('no_revision_node_form_submit', 'node_form_submit'),
+  );
+  /* TODO remove ( replaced by content lock module cancel button )
+  $form['actions']['cancel'] = array(
+    '#type'   => 'submit',
+    '#value'  => t('Cancel'),
+	'#weight' => 10,
+    '#submit' => array('ccms_callback_for_cancel_button'),
+    '#limit_validation_errors' => array(),  // don't validate any fields
+  );
+  */
+
+  $form['actions']['delete']['#access'] = FALSE;
+  
+  // add pseudo fields ( see ccms_field_extra_fields()
+  $form['field_stage1_markup'] = array(
+    '#type' => 'markup',
+    '#markup' => '<p class="markup-section-heading">New Award Proposal Stage 1: Expression of Interest</p>',
+  );
+  $form['field_stage2_markup'] = array(
+    '#type' => 'markup',
+    '#markup' => '<p class="markup-section-heading">New Award Proposal Stage 2: Concept Paper</p>',
+  );
+  $form['field_stage3_markup'] = array(
+    '#type' => 'markup',
+    '#markup' => '<p class="markup-section-heading">New Award Proposal Stage 3: Marketing and Resource Requirements</p>
+	              <p>All sections in stage 3  must be completed and signed off before the full proposal is submitted to ADP Committee</p>',
+  );
+  // move help text below label
+  $form['#attached']['js'][] = array(
+    'data' => drupal_get_path('module', 'ccms') . '/js/fix-help-text.js',
+	'type' => 'file',
+  );
+}
+
+
+function ccms_form_validation_documentation_set_node_form_alter(&$form, &$form_state, $form_id) {
+
+  $cv_nid = _ccms_get_cv_nid($form['#node']);
+  $cv_node = node_load($cv_nid);
+  
+  $form['title']['#disabled'] = TRUE;  // still visible and submits
+  
+  if (ccms_validation_required($cv_node)) {
+  
+    $form['field_grant_vds_update_ref']['#access'] = FALSE;
+    if (!ccms_current_user_has_ccms_system_admins_role()) {
+      $form['field_learning_outcomes']['#disabled'] = TRUE;
+    }
+
+  } else {  // no validation required so we need to remove all the fields except the modules field
+    $form['field_qualification_award_type_']['#access'] = FALSE; $form['field_intermediate_qualification']['#access'] = FALSE;
+    $form['field_vds_awarding_institution']['#access'] = FALSE; $form['field_location_of_delivery']['#access'] = FALSE;
+    $form['field_vds_duration_of_award']['#access'] = FALSE; $form['field_vds_prof_accreditation']['#access'] = FALSE;
+    $form['field_accreditation_renewal_date']['#access'] = FALSE; $form['field_route_code_sits']['#access'] = FALSE;
+    $form['field_ucas_course_code']['#access'] = FALSE; $form['field_external_benchmarking']['#access'] = FALSE;
+    $form['field_entry_requirements']['#access'] = FALSE; $form['field_entry_reqs_addntl']['#access'] = FALSE;
+    $form['field_student_support']['#access'] = FALSE; $form['field_students_with_disabilities']['#access'] = FALSE;
+    $form['field_distinctive_features']['#access'] = FALSE; $form['field_career_opportunities']['#access'] = FALSE;
+    $form['field_further_study_opportunitie']['#access'] = FALSE; $form['field_educational_aims']['#access'] = FALSE;
+    $form['field_learning_outcomes']['#access'] = FALSE; $form['field_teaching_strategy']['#access'] = FALSE;
+    $form['field_assessment_strategy']['#access'] = FALSE; $form['field_curriculum_structure']['#access'] = FALSE;
+    $form['field_skills_dev_strateg']['#access'] = FALSE; $form['field_team_working']['#access'] = FALSE;
+    $form['field_improving_learning']['#access'] = FALSE; $form['field_career_management_skills']['#access'] = FALSE;
+    $form['field_hear_progress_files']['#access'] = FALSE; $form['field_professional_standards']['#access'] = FALSE;
+    $form['field_award_map']['#access'] = FALSE; $form['field_misc_associated_docs']['#access'] = FALSE;
+    $form['field_programme_handbook']['#access'] = FALSE; $form['field_grant_vds_update_ref']['#access'] = FALSE;
+  }  
+  
+  $form['actions']['submit']['#value'] = 'Save (create new version of form)'; // rename existing submit button
+  
+ $form['actions']['secondsubmit'] = array(
+        '#type' => 'submit',
+        '#value' => t('Save (overwrite current form)'),
+        '#weight' => 4,
+        '#validate' => array('node_form_validate'),
+        // Use default and an additional submit handler to turn off the revision which is a default.
+        '#submit' => array('no_revision_node_form_submit', 'node_form_submit'),
+  );
+  /* TODO remove ( replaced by content lock module cancel button )
+  $form['actions']['cancel'] = array(
+    '#type'   => 'submit',
+    '#value'  => t('Cancel'),
+	'#weight' => 10,
+    '#submit' => array('ccms_callback_for_cancel_button'),
+    '#limit_validation_errors' => array(),  // don't validate any fields
+  );
+  */
+
+  $form['actions']['delete']['#access'] = FALSE;
+  
+  // move help text below label
+  $form['#attached']['js'][] = array(
+    'data' => drupal_get_path('module', 'ccms') . '/js/fix-help-text.js',
+	'type' => 'file',
+  );
+}
+
+/**
+* Implementation of additional form submit
+*/
+function no_revision_node_form_submit($form, &$form_state) {
+  
+  // not sure which of these is correct or whether I need to set both.  'values' alone doesn't work.
+  $form_state['values']['revision'] = 0;
+  $form_state['input']['revision'] = NULL;
+  
+  $form_state['redirect'] = 'node/' . $form_state['storage']['cv_nid'];  // must have come from the cv node form so head back there
+}
+
+function ccms_callback_for_cancel_button($form, &$form_state) {
+
+  drupal_goto();  // uses the destination parameter in query or goes to front page if none
+}
+
+/**
+ *
+ */
+function ccms_form_course_version_node_form_alter(&$form, &$form_state, $form_id) {
+
+  $form['field_version']['#disabled'] = TRUE;
+  $form['field_cv_status_changes_ref']['#access'] = FALSE;
+  $form['field_prev_course_version_ref']['#access'] = FALSE;
+  $form['field_next_course_version_ref']['#access'] = FALSE;
+  $form['field_prop_status_changes_ref']['#access'] = FALSE;
+  $form['field_proposal_ref']['#access'] = FALSE;
+  $form['field_vds_ref']['#access'] = FALSE;
+  $form['field_vds_status_changes_ref']['#access'] = FALSE;
+  
+  $form['actions']['cancel'] = array(
+    '#type'   => 'submit',
+    '#value'  => t('Cancel'),
+	'#weight' => 10,
+    '#submit' => array('ccms_callback_for_cancel_button'),
+    '#limit_validation_errors' => array(),  // don't validate any fields
+  );
+  $form['actions']['delete']['#access'] = FALSE;
+  $form['#attached']['js'][] = array(
+    'data' => drupal_get_path('module', 'ccms') . '/js/fix-help-text.js',
+	'type' => 'file',
+  );
+}
+  
+function ccms_form_module_version_node_form_alter(&$form, &$form_state, $form_id) {
+
+  $form['field_version']['#disabled'] = TRUE;
+  $form['field_prev_module_version_ref']['#access'] = FALSE;
+  $form['field_next_module_version_ref']['#access'] = FALSE;
+  
+  $form['actions']['cancel'] = array(
+    '#type'   => 'submit',
+    '#value'  => t('Cancel'),
+	'#weight' => 10,
+    '#submit' => array('ccms_callback_for_cancel_button'),
+    '#limit_validation_errors' => array(),  // don't validate any fields
+  );
+  $form['actions']['delete']['#access'] = FALSE;
+  $form['revision_information']['#access'] = FALSE;
+  
+  //add pseudo fields to node form
+  $form['field_mif_assmnt_code_table'] = array(
+    '#type' => 'markup',
+    '#markup' => _ccms_get_assmnt_method_codes_table(),
+  );
+  $form['field_mif_clo_title'] = array(
+    '#type' => 'markup',
+    '#markup' => '<p id="form-clo-title" class="label-above-boxed">Core Learning Outcomes</p>',
+  );
+  
+  // @TODO: do we want to control the sequence of module status ?
+   
+  // we are adding a snippet of jQuery to move the assessment criteria table, the core learning outcomes,
+  // and the named awards groups on the node form ( which are field group multiple tables )
+  // into the field group where they should be located, but for this bug http://drupal.org/node/1650132
+  $form['#attached']['js'][] = array(
+    'data' => drupal_get_path('module', 'ccms') . '/js/fix-field-group-multiple-table-position.js',
+	'type' => 'file',
+  );
+  $form['#attached']['js'][] = array(
+    'data' => drupal_get_path('module', 'ccms') . '/js/fix-help-text.js',
+	'type' => 'file',
+  );
+}
+
+/**
+ *
+ */
+function ccms_form_cv_status_change_node_form_alter(&$form, &$form_state, $form_id) {
+  
+  $cv_nid = arg(3);
+  $node = $form_state['node'];
+
+  if ((!isset($node->nid) || isset($node->is_new))  && $cv_nid) {
+    // this is new node form so if we have the parent cv node in the URL set the title and lock the field
+
+	if ($cv_nid) {
+	  $cv_node = node_load($cv_nid);
+	  $form['title']['#default_value'] = 'Status change to course version "' . $cv_node->title . '"';
+      $form['title']['#disabled'] = TRUE;  // still submits
+	}
+  }
+  
+  /* Only 'CCMS system admins' role can create a new CV status change node */
+  
+  if ($cv_nid) {
+    // if we know the parent CV from the URL path we can get the existing status and modify the set of available status options
+  
+    $current_status = ccms_get_current_status($cv_nid, 'course_version');
+	
+	if ($cv_node->field_validation_required[$cv_node->language][0]['value'] = '1') {
+	  $validation_required = TRUE;
+	} else {
+	  $validation_required = FALSE;
+	}
+  
+    switch ($current_status) {
+  
+     case 'not_commenced':
+       $form['field_cv_status_change'][$form['field_cv_status_change']['#language']]['#options'] = array('not_commenced' => 'Development not yet commenced',
+																										 'in_dev' => 'In development',                                                               
+																										 'superseded' => 'Superseded',
+																										 'suspended' => 'Suspended',
+																										 'ceased' => 'Ceased',);
+       break;
+     case 'in_dev':
+	   if ($validation_required) {
+         $form['field_cv_status_change'][$form['field_cv_status_change']['#language']]['#options'] = array('in_dev' => 'In development',
+																										 'definitive' => 'Definitive',
+																										 'superseded' => 'Superseded',
+																										 'suspended' => 'Suspended',
+																										 'rejected' => 'Rejected',);
+	   } else {
+         $form['field_cv_status_change'][$form['field_cv_status_change']['#language']]['#options'] = array('in_dev' => 'In development',
+																										   'definitive_no_validation' => 'Definitive ( validation not required )',
+																										   'superseded' => 'Superseded',
+																										   'suspended' => 'Suspended',
+																										   'rejected' => 'Rejected',);
+	   }
+       break;
+	 case 'definitive':
+       $form['field_cv_status_change'][$form['field_cv_status_change']['#language']]['#options'] = array('definitive' => 'Definitive',
+																										 'superseded' => 'Superseded',
+																										 'suspended' => 'Suspended',
+																										 'ceased' => 'Ceased',);
+       break;
+	 case 'definitive_no_validation':
+	   if ($validation_required) {
+	     $form['field_cv_status_change'][$form['field_cv_status_change']['#language']]['#options'] = array('definitive' => 'Definitive',
+																										   'superseded' => 'Superseded',
+																										   'suspended' => 'Suspended',
+																										   'ceased' => 'Ceased',);
+	   } else {
+	     $form['field_cv_status_change'][$form['field_cv_status_change']['#language']]['#options'] = array('definitive_no_validation' => 'Definitive ( validation not required )',
+																										   'superseded' => 'Superseded',
+																										   'suspended' => 'Suspended',
+																										   'ceased' => 'Ceased',);
+       }																										 
+	 case 'superseded':
+       $form['field_cv_status_change'][$form['field_cv_status_change']['#language']]['#options'] = array('superseded' => 'Superseded',
+																										 'ceased' => 'Ceased',);
+       break;
+	 case 'suspended':
+       $form['field_cv_status_change'][$form['field_cv_status_change']['#language']]['#options'] = array('definitive' => 'Definitive',
+																										 'suspended' => 'Suspended',
+																										 'ceased' => 'Ceased',);
+       break;
+	 case 'ceased':
+       $form['field_cv_status_change'][$form['field_cv_status_change']['#language']]['#options'] = array('ceased' => 'Ceased',);
+   
+       break;	 
+	}
+  }
+  
+  $form['actions']['cancel'] = array(
+    '#type'   => 'submit',
+    '#value'  => t('Cancel'),
+	'#weight' => 10,
+    '#submit' => array('ccms_callback_for_cancel_button'),
+    '#limit_validation_errors' => array(),  // don't validate any fields
+  );
+  $form_state['storage']['cv_nid'] = $cv_nid;  // store to use in redirect in submit function
+  $form_state['storage']['status_change_type'] = 'cv';
+  $form['actions']['submit']['#submit'][] = 'ccms_form_submit_redirect_to_cv';  //Not totally sure this is correct but it works
+}
+
+/**
+ *
+ */
+function ccms_form_proposal_status_change_node_form_alter(&$form, &$form_state, $form_id) {
+  
+  $cv_nid = arg(3);
+  $node = $form_state['node'];
+
+  if ((!isset($node->nid) || isset($node->is_new)) && $cv_nid) {
+    // this is new node form so if we have the parent cv node in the URL set the title and lock the field
+	
+	  $cv_node = node_load($cv_nid);
+	  $form['title']['#default_value'] = 'Status change to the proposal for course version "' . $cv_node->title . ' ( version ' . $cv_node->field_version[$cv_node->language][0]['value'] . ' )"';
+      $form['title']['#disabled'] = TRUE;  // still submits
+  }
+  
+  if ($cv_nid && !ccms_current_user_has_ccms_system_admins_role()) {  
+    // if we know the parent CV from the URL path we can get the existing status and modify the set of available status options
+	// but we don't do this for CCMS system admins
+  
+    $current_status = ccms_get_current_status($cv_nid, 'proposal');
+  
+    switch ($current_status) {
+  
+     case 'not_commenced':
+       $form['field_proposal_status_change'][$form['field_proposal_status_change']['#language']]['#options'] = array('not_commenced' => 'Development not yet commenced',
+	                                                                                                                 'in_dev' => 'In development',);
+       break;
+     case 'in_dev':
+       $form['field_proposal_status_change'][$form['field_proposal_status_change']['#language']]['#options'] = array('in_dev' => 'In development',
+																													 'submitted_for_approval' => 'Submitted for approval',);   
+       break;
+	 case 'submitted_for_approval':
+       $form['field_proposal_status_change'][$form['field_proposal_status_change']['#language']]['#options'] = array('submitted_for_approval' => 'Submitted for approval',
+																													 'approved' => 'Approved',
+																													 'conditionally_approved' => 'Conditionally approved',
+																						                             'rejected' => 'Rejected',);
+       break;	   
+     case 'conditionally_approved':
+       $form['field_proposal_status_change'][$form['field_proposal_status_change']['#language']]['#options'] = array('in_dev'=> 'In development',
+																													 'approved' => 'Approved',
+																						                             'rejected' => 'Rejected',);   
+       break;
+     case 'approved':
+       $form['field_proposal_status_change'][$form['field_proposal_status_change']['#language']]['#options'] = array('approved'=> 'Approved',);
+       break;
+     case 'rejected':
+       $form['field_proposal_status_change'][$form['field_proposal_status_change']['#language']]['#options'] = array('rejected'=> 'Rejected',);
+	   break;
+    }
+  }
+  
+  $form['actions']['cancel'] = array(
+    '#type'   => 'submit',
+    '#value'  => t('Cancel'),
+	'#weight' => 10,
+    '#submit' => array('ccms_callback_for_cancel_button'),
+    '#limit_validation_errors' => array(),  // don't validate any fields
+  );
+  $form_state['storage']['cv_nid'] = $cv_nid;  // store to use in redirect in submit function
+  $form_state['storage']['status_change_type'] = 'proposal';
+  $form['actions']['submit']['#submit'][] = 'ccms_form_submit_redirect_to_cv';  //Not totally sure this is correct but it works
+}
+
+/**
+ *
+ */
+function ccms_form_vds_status_change_node_form_alter(&$form, &$form_state, $form_id) {
+  
+  $cv_nid = arg(3);
+  $node = $form_state['node'];
+
+  if ((!isset($node->nid) || isset($node->is_new))  && $cv_nid) {
+    // this is new node form so if we have the parent cv node in the URL set the title and lock the field
+
+	if ($cv_nid) {
+	  $cv_node = node_load($cv_nid);
+	  $form['title']['#default_value'] = 'Status change to the vds for course version "' . $cv_node->title . ' ( version ' . $cv_node->field_version[$cv_node->language][0]['value'] . ' )"';
+      $form['title']['#disabled'] = TRUE;  // still submits
+	}
+  }
+  
+  if ($cv_nid) {
+    // if we know the parent CV from the URL path we can get the existing status and modify the set of available status options
+  
+    $current_status = ccms_get_current_status($cv_nid, 'validation_documentation_set');
+  
+    switch ($current_status) {
+  
+     case 'not_commenced':
+       $form['field_vds_status_change'][$form['field_vds_status_change']['#language']]['#options'] = array('not_commenced' => 'Development not yet commenced',
+	                                                                                                       'prelim_in_dev' => 'In development ( preliminary phase )',);
+       break;
+     case 'prelim_in_dev':
+       $form['field_vds_status_change'][$form['field_vds_status_change']['#language']]['#options'] = array('prelim_in_dev' => 'In development ( preliminary phase )',
+																										   'prelim_submitted_for_approval' => 'Submitted for approval ( preliminary phase )',);   
+       break;
+     case 'prelim_submitted_for_approval':
+       $form['field_vds_status_change'][$form['field_vds_status_change']['#language']]['#options'] = array('prelim_submitted_for_approval' => 'Submitted for approval( preliminary phase )',
+																										   'prelim_conditionally_approved' => 'Conditionally approved ( preliminary phase )',
+																										   'prelim_approved' => 'Approved ( preliminary phase )',
+																										   'prelim_rejected' => 'Rejected ( preliminary phase )',);   
+       break;
+     case 'prelim_conditionally_approved':
+       $form['field_vds_status_change'][$form['field_vds_status_change']['#language']]['#options'] = array('prelim_conditionally_approved' => 'Conditionally approved ( preliminary phase )',
+																										   'prelim_in_dev' => 'In development ( preliminary phase )',);   
+       break;
+	 case 'prelim_approved':
+       $form['field_vds_status_change'][$form['field_vds_status_change']['#language']]['#options'] = array('prelim_approved' => 'Approved ( preliminary phase )',
+																										   'final_in_dev' => 'In development ( final phase )',);   
+       break;
+	 case 'prelim_rejected':
+       $form['field_vds_status_change'][$form['field_vds_status_change']['#language']]['#options'] = array('prelim_rejected' => 'Rejected ( preliminary phase )',);   
+       break;
+	 case 'final_in_dev':
+       $form['field_vds_status_change'][$form['field_vds_status_change']['#language']]['#options'] = array('final_in_dev' => 'In development ( final phase )',
+																										   'final_submitted_for_approval' => 'Submitted for approval ( final phase )',);   
+       break;
+	 case 'final_submitted_for_approval':
+       $form['field_vds_status_change'][$form['field_vds_status_change']['#language']]['#options'] = array('final_submitted_for_approval' => 'Submitted for approval ( final phase )',
+																										   'final_conditionally_approved' => 'Conditionally approved ( final phase )',
+																										   'final_approved' => 'Approved ( final phase )',
+																										   'final_rejected' => 'Rejected ( final phase )',);   
+       break;
+     case 'final_conditionally_approved':
+       $form['field_vds_status_change'][$form['field_vds_status_change']['#language']]['#options'] = array('final_conditionally_approved' => 'Conditionally approved ( final phase )',
+																										   'final_in_dev' => 'In development ( final phase )',);   
+       break;
+     case 'final_approved':
+       $form['field_vds_status_change'][$form['field_vds_status_change']['#language']]['#options'] = array('final_approved' => 'Approved ( final phase )',);   
+       break;
+     case 'final_rejected':
+       $form['field_vds_status_change'][$form['field_vds_status_change']['#language']]['#options'] = array('final_rejected' => 'Rejected ( final phase )',);   
+       break;
+    }
+  }
+  
+    $form['actions']['cancel'] = array(
+    '#type'   => 'submit',
+    '#value'  => t('Cancel'),
+	'#weight' => 10,
+    '#submit' => array('ccms_callback_for_cancel_button'),
+    '#limit_validation_errors' => array(),  // don't validate any fields
+  );
+  
+  $form_state['storage']['cv_nid'] = $cv_nid;  // store to use in redirect in submit function
+  $form_state['storage']['status_change_type'] = 'vds';
+  $form['actions']['submit']['#submit'][] = 'ccms_form_submit_redirect_to_cv';  //Not totally sure this is correct but it works
+}
+
+/**
+ *
+ */
+function ccms_form_submit_redirect_to_cv($form, &$form_state) {
+  // this function is shared by the status update node forms for the cv
+  // the redirect has to be in a submit function
+  $form_state['redirect'] = 'node/' . $form_state['storage']['cv_nid'];  // must have come from the node form so head back there
+}
+
+/**
+ *
+ * @return boolean
+ */
+function _ccms_has_revisions($node) {
+
+  $vids = node_revision_list($node);
+  if (count($vids) > 1) {
+    return TRUE;
+  } else {
+    return FALSE;
+  }
+}
+
+/**
+ *
+ * @return boolean
+ */
+function ccms_current_user_has_ccms_system_admins_role() {
+  
+  global $user;
+  $ccms_system_admin_accounts = ccms_get_users_with_role('CCMS system admins');
+  if (isset($ccms_system_admin_accounts)) {
+    foreach ($ccms_system_admin_accounts AS $account) {
+	  $uids[] = $account->uid;
+	}
+  }  
+  if (in_array($user->uid, $uids)) {
+    return TRUE;
+  } else {
+    return FALSE;
+  }
+}
+
+/**
+ * Implements hook_node_view().
+ */
+function ccms_node_view($node, $view_mode, $langcode) {
+/**
+ *  We are going to add a bunch of pseudo fields to the node view pages here to create layouts
+ * of the documents for printing
+ */
+
+  switch ($node->type) {
+  
+    case 'course_version':
+	
+  	  break;
+	  
+	case 'proposal':
+	  
+	  $fptitle = '<p class="proposal-title">New Award Proposal:</p>';
+	  If (!empty($node->field_working_title_of_award)) {
+	    $title = $node->field_working_title_of_award[$node->language][0]['value'];
+	  } else {
+	    $title = 'No input';
+	  }
+	  $fptitle .= '<p class="proposal-title">Award Title: ' . $title . '</p>';
+
+	  $node->content['ccms_proposal_logo'] = array(
+	    '#type' => 'markup',
+		'#markup' => '<img src="/sites/default/files/images/UCFlogo.png" id="ucf-logo" alt="UCF logo" />',
+	  );
+      $node->content['ccms_proposal_award_title'] = array(
+        '#type' => 'markup',
+        '#markup' => $fptitle,
+      );		
+	  $node->content['ccms_proposal_approval_table'] = array(
+	    '#type' => 'markup',
+		'#markup' => _ccms_get_proposal_approval_table($node),
+	  );
+	  $node->content['ccms_proposal_section_1'] = array(
+	    '#type' => 'markup',
+		'#markup' => '<p class="markup-section-heading">New Award Proposal Stage 1: Expression of Interest</p>',
+	  );
+	  $node->content['ccms_outline_award_info_table'] = array(
+	    '#type' => 'markup',
+		'#markup' => _ccms_get_award_outline_info_table($node),
+	  );
+	  $node->content['ccms_proposal_section_2'] = array(
+	    '#type' => 'markup',
+		'#markup' => '<p class="markup-section-heading break-before">New Award Proposal Stage 2: Concept Paper</p>',
+	  );
+	  $node->content['ccms_proposal_section_3'] = array(
+	    '#type' => 'markup',
+		'#markup' => '<p class="markup-section-heading break-before">New Award Proposal Stage 3: Marketing and resource requirements</p>',
+	  );
+	  $node->content['ccms_proposal_market_info_cell'] = array(
+	    '#type' => 'markup',
+		'#markup' => '<div class="cell-above">Market information report</div>',
+	  );
+	  $node->content['ccms_proposal_estates_cell'] = array(
+	    '#type' => 'markup',
+		'#markup' => '<div class="cell-above">Estates</div>',
+	  );
+	  break;
+	  
+	case 'validation_documentation_set':
+	
+	  $intro_string = 'The AIF provides essential information to students, staff teams and others on a particular award or a group of awards ' .
+	                  'in a programme and is designed to meet the University College’s expectations and those of external bodies such as the ' .
+					  'Quality Assurance Agency (QAA) in respect of programme specifications.';
+      $refer_string = 'Please refer to the guidance notes on completing Award Information Forms <em>before</em> completing the details below';
+	
+	  $node->content['ccms_vds_logo'] = array(
+	    '#type' => 'markup',
+		'#markup' => '<img src="/sites/default/files/images/UCFlogo.png" id="ucf-logo" alt="UCF logo" />',
+	  );
+	  $node->content['ccms_vds_intro'] = array(
+	    '#type' => 'markup',
+		'#markup' => '<p class="markup-section-heading">Award Information Form (AIF)</p><p class="markup-normal">' . $intro_string . '</p><p class="markup-normal">' . $refer_string . '</p>',
+	  );
+	  $node->content['ccms_vds_section_1'] = array(
+	    '#type' => 'markup',
+		'#markup' => '<p class="markup-section-heading">Section 1 - General Award Information</p>',
+	  );	  	
+	  $node->content['ccms_vds_section_2'] = array(
+	    '#type' => 'markup',
+		'#markup' => '<p class="markup-section-heading break-before">Section 2 - Entry Requirements, Student Support and Further Opportunities</p>',
+	  );	  	
+	  $node->content['ccms_vds_section_3'] = array(
+	    '#type' => 'markup',
+		'#markup' => '<p class="markup-section-heading break-before">Section 3 - Teaching, Learning and Assessment</p>',
+	  );
+	  $node->content['ccms_vds_section_4'] = array(
+	    '#type' => 'markup',
+		'#markup' => '<p class="markup-section-heading break-before">Section 4 - Learning and Employability</p>',
+	  );	  
+	  
+	  break;
+	  
+    case 'module_version':
+	  //setup strings
+	  $intro_title_string = 'Module Information From (MIF)';
+	  $intro_string = 'The MIF provides essential information to students, staff teams and others on a particular ' .
+	                  'Module. Please refer to the Guidance notes on Module Information Forms <strong>before</strong> ' .
+	                  'completing the details below.';
+	  
+	  $section_1_string = 'Section 1 - Changes made to Section 1 of the MIF will require School level approval. ' .
+	                      'If substantial changes to Modules/Awards are required, consult with Associate Dean for advice.';
+	  
+	  $section_2_string = 'Section 2 - Any changes made to Section 2 of the MIF will normally require School level approval.';
+	  
+	  $section_3_string = 'Section 3 - Once initial approval of the Module has been given, the Module Leader may make changes ' .
+                          'to this section, following appropriate consultation.';
+	  
+	  $node->content['ccms_mif_logo'] = array(
+	    '#type' => 'markup',
+		'#markup' => '<img src="/sites/default/files/images/UCFlogo.png" id="ucf-logo" alt="UCF logo" />',
+	  );
+	  $node->content['ccms_mif_intro'] = array(
+	    '#type' => 'markup',
+		'#markup' => '<p class="markup-normal">' . $intro_title_string . '</p>' . '<p class="markup-normal">' . $intro_string . '</p>',
+	  );
+	  $node->content['ccms_mif_section_1'] = array(
+	    '#type' => 'markup',
+		'#markup' => '<p class="markup-section-heading">' . $section_1_string . '</p>',
+	  );
+	  $node->content['ccms_mif_section_2'] = array(
+	    '#type' => 'markup',
+		'#markup' => '<p class="markup-section-heading break-before">' . $section_2_string . '</p>',
+	  );
+	  $node->content['ccms_mif_section_3'] = array(
+	    '#type' => 'markup',
+		'#markup' => '<p class="markup-section-heading break-before">' . $section_3_string . '</p>',
+	  );
+	  $node->content['ccms_mif_section_4'] = array(
+	    '#type' => 'markup',
+		'#markup' => '<p class="markup-section-heading break-before">Section 4 - Administrative Information</p>',
+	  );
+	  $node->content['ccms_assmnt_method_codes'] = array(
+	    '#type' => 'markup',
+		'#markup' => '<p class="markup-section-heading">' . _ccms_get_assmnt_method_codes_table() . '</p>',
+	  );
+	  break;
+
+  }
+}
+
+/**
+ * Implements hook_field_extra_fields().
+ *
+ * Declares pseudo fields added in hook_node_view and hook_form_alter so they
+ * appear on the /admin/structure/types/manage/page/display page
+ * allowing us to position then on the node form and  node view page
+ *
+ * @return array
+ */
+ function ccms_field_extra_fields() {
+ 
+   // on the 'proposal' ct type node view
+  $extra_fields['node']['proposal']['display'] = array(
+    'ccms_proposal_logo' => array(
+	   'label' => t('Proposal front page logo image'),
+	   'description' => t('Proposal logo image added by ccms_node_view()'),
+	   'weight' => 10,
+	 ),
+    'ccms_proposal_award_title' => array(
+       'label' => t('Proposal front page title'),
+	   'description' => t('Proposal front page title added by ccms_node_view()'),
+	   'weight' => 10,
+	 ),
+    'ccms_proposal_approval_table' => array(
+	   'label' => t('Proposal front page table of approvals'),
+	   'description' => t('Proposal approval table added by ccms_node_view()'),
+	   'weight' => 10,
+	 ),
+     'ccms_proposal_section_1' => array(
+	   'label' => t('Proposal section 1 heading'),
+	   'description' => t('Proposal section 1 heading added by ccms_node_view()'),
+	   'weight' => 10,
+	 ),
+	 'ccms_outline_award_info_table' => array(
+	   'label' => t('Proposal award outline info table'),
+	   'description' => t('Proposal award outline info table added by ccms_node_view()'),
+	   'weight' => 10,
+	 ),
+     'ccms_proposal_section_2' => array(
+	   'label' => t('Proposal section 2 heading'),
+	   'description' => t('Proposal section 2 heading added by ccms_node_view()'),
+	   'weight' => 10,
+	 ),
+     'ccms_proposal_section_3' => array(
+	   'label' => t('Proposal section 3 heading'),
+	   'description' => t('Proposal section 3 heading added by ccms_node_view()'),
+	   'weight' => 10,
+	 ),
+	 'ccms_proposal_market_info_cell' => array(
+	   'label' => t('Proposal market info cell'),
+	   'description' => t('Proposal market info cell added by ccms_node_view()'),
+	   'weight' => 10,
+	 ),
+	 'ccms_proposal_estates_cell' => array(
+	   'label' => t('Proposal estates cell'),
+	   'description' => t('Proposal estates cell added by ccms_node_view()'),
+	   'weight' => 10,
+	 ),
+   );
+   
+   // on the 'proposal' ct type node form
+   $extra_fields['node']['proposal']['form'] = array(
+     'field_stage1_markup' => array(
+	   'label' => t('Proposal stage 1 heading'),
+	   'description' => t('Proposal stage 1 heading added by ccms_form_proposal_node_form_alter()'),
+	   'weight' => 10,
+	 ),
+     'field_stage2_markup' => array(
+	   'label' => t('Proposal stage 2 heading'),
+	   'description' => t('Proposal stage 2 heading added by ccms_form_proposal_node_form_alter()'),
+	   'weight' => 10,
+	 ),
+     'field_stage3_markup' => array(
+	   'label' => t('Proposal stage 3 heading'),
+	   'description' => t('Proposal stage 3 heading added by ccms_form_proposal_node_form_alter()'),
+	   'weight' => 10,
+	 ),
+   );
+   
+   // on the 'validation_documentation_set' ct type node view
+   $extra_fields['node']['validation_documentation_set']['display'] = array(
+       'ccms_vds_logo' => array(
+	   'label' => t('VDS front page logo image'),
+	   'description' => t('VDS logo image added by ccms_node_view()'),
+	   'weight' => 10,
+	 ),    
+    'ccms_vds_section_1' => array(
+	   'label' => t('VDS Section 1 heading'),
+	   'description' => t('VDS Section 1 heading added by ccms_node_view()'),
+	   'weight' => 10,
+	 ),
+    'ccms_vds_section_2' => array(
+       'label' => t('VDS section 2 heading'),
+	   'description' => t('VDS Section 2 heading added by ccms_node_view()'),
+	   'weight' => 10,
+	 ),
+    'ccms_vds_section_3' => array(
+	   'label' => t('VDS section 3 heading'),
+	   'description' => t('VDS Section 3 heading added by ccms_node_view()'),
+	   'weight' => 10,
+	 ),
+     'ccms_vds_section_4' => array(
+	   'label' => t('VDS section 4 heading'),
+	   'description' => t('VDS Section 4 heading added by ccms_node_view()'),
+	   'weight' => 10,
+	 ),
+   );
+ 
+   // on the 'module_version' ct type node view
+   $extra_fields['node']['module_version']['display'] = array(
+     'ccms_mif_logo' => array(
+	   'label' => t('MIF front page logo image'),
+	   'description' => t('MIF logo image added by ccms_node_view()'),
+	   'weight' => 10,
+	 ),
+     'ccms_mif_intro' => array(
+	   'label' => t('MIF intro text para'),
+	   'description' => t('MIF intro para added by ccms_node_view()'),
+	   'weight' => 10,
+	 ),
+	 'ccms_mif_section_1' => array(
+	   'label' => t('MIF section 1 heading'),
+	   'description' => t('MIF section 1 heading para added by ccms_node_view()'),
+	   'weight' => 10,
+	 ),
+	 'ccms_mif_section_2' => array(
+	   'label' => t('MIF section 2 heading'),
+	   'description' => t('MIF section 2 heading para added by ccms_node_view()'),
+	   'weight' => 10,
+	 ),
+	 'ccms_mif_section_3' => array(
+	   'label' => t('MIF section 3 heading'),
+	   'description' => t('MIF section 3 heading para added by ccms_node_view()'),
+	   'weight' => 10,
+	 ),
+	 'ccms_mif_section_4' => array(
+	   'label' => t('MIF section 4 heading'),
+	   'description' => t('MIF section 3 heading para added by ccms_node_view()'),
+	   'weight' => 10,
+	 ),
+     'ccms_assmnt_method_codes' => array(
+	   'label' => t('MIF assessment method codes table'),
+	   'description' => t('MIF assessment method table added by ccms_node_view()'),
+	   'weight' => 10,
+	 ),
+   );   
+      
+   // on the 'module' ct type node form
+   $extra_fields['node']['module_version']['form'] = array(
+     'field_mif_assmnt_code_table' => array(
+	   'label' => t('MIF assessment method table'),
+	   'description' => t('MIF assessmnet method table added by ccms_form_module_version_node_form_alter()'),
+	   'weight' => 10,
+	 ),
+	 'field_mif_clo_title' => array(
+	   'label' => t('MIF clo title box'),
+	   'description' => t('MIF clo title box added by ccms_form_module_version_node_form_alter()'),
+	   'weight' => 10,
+	 ),
+   );
+   return $extra_fields;
+}
+
+/**
+ * Builds an HTML table of approval info for the front page of the proposal
+ *
+ * @return string
+ *   HTML table for use on the front page of the proposal
+ */
+function _ccms_get_proposal_approval_table($node) {
+
+  // get sanitised field content to build table with
+  $field = field_get_items('node', $node, 'field_submitted_sets');
+  $field_submitted_sets_value = field_view_value('node', $node, 'field_submitted_sets', $field[0]);
+
+  $field = field_get_items('node', $node, 'field_date_approved_sets');
+  $field_date_approved_sets_value = field_view_value('node', $node, 'field_date_approved_sets', $field[0]);
+  
+  $field = field_get_items('node', $node, 'field_s2_submitted_sets');
+  $field_s2_submitted_sets_value = field_view_value('node', $node, 'field_s2_submitted_sets', $field[0]);
+  
+  $field = field_get_items('node', $node, 'field_s2_date_approved_sets');
+  $field_s2_date_approved_sets_value = field_view_value('node', $node, 'field_s2_date_approved_sets', $field[0]);
+  
+  $field = field_get_items('node', $node, 'field_s3_submitted_adpc');
+  $field_s3_submitted_adpc_value = field_view_value('node', $node, 'field_s3_submitted_adpc', $field[0]);
+  
+  $field = field_get_items('node', $node, 'field_s3_date_approved_adpc');
+  $field_s3_date_approved_adpc_value = field_view_value('node', $node, 'field_s3_date_approved_adpc', $field[0]);
+  
+  //build the table
+  $header = array('Stage', 'For approval by', 'Date submitted', 'Date approved');
+  $rows[] = array('1: Expression of interest', 'School Executive Team', drupal_render($field_submitted_sets_value), drupal_render($field_date_approved_sets_value));
+  $rows[] = array('2: Concept Paper', 'School Executive Team', drupal_render($field_s2_submitted_sets_value), drupal_render($field_s2_date_approved_sets_value));
+  $rows[] = array('3: Full proposal with sign offs', 'Academic Development and Planning Committee', drupal_render($field_s3_submitted_adpc_value), drupal_render($field_s3_date_approved_adpc_value));
+
+  return theme('table', array('header' => $header, 'rows' => $rows, 'sticky' => FALSE, 'attributes' => array('id' => 'proposal-approval-table')));
+}
+
+/**
+ * Generates an html table for insertion on the module node view and node form
+ *
+ * @return string
+ *   An html table for use on the proposal
+ */
+function _ccms_get_assmnt_method_codes_table() {
+
+  // @TODO: this could be a theme_table implementation
+  // but why bother when it is static
+  	  return '<table class="assmnt_methods">
+  <tr>
+    <th colspan="4"><p class="markup-normal">The following codes for assessment methods apply</p><p class="markup-subscript">(additional codes can be proposed through this process if necessary):-</p></th>
+  </tr>
+  <tr>
+    <td class="assmnt-code">AR</td><td class="assmnt-method">Artefact</td><td class="assmnt-code">OR</td><td class="assmnt-method">Oral</td>
+  </tr>
+  <tr>
+    <td>CB</td><td>computer-based</td><td>PC</td><td>practical</td>
+	</tr>
+  <tr>
+    <td>CE</td><td>critical evaluation</td><td>PF</td><td>performance</td>
+  </tr>
+  <tr>
+    <td>CS</td><td>case study</td><td>PL</td><td>placement</td>
+  </tr>
+  <tr>
+    <td>DI</td><td>dissertation or project</td><td>PO</td><td>portfolio</td>
+  </tr>
+  <tr>
+    <td>ES</td><td>essay</td><td>PR</td><td>presentation</td>
+  </tr>
+  <tr>
+    <td>EX</td><td>Exam</td><td>RE</td><td>Individual report</td>
+  </tr>
+  <tr>
+    <td>GR</td><td>group report</td><td>SP</td><td>Studio practice</td>
+  </tr>
+  <tr>
+    <td>IT</td><td>in-Module test</td><td>&nbsp;</td><td>&nbsp;</td>
+  </tr>
+  <tr>
+    <td>JL</td><td>Journal/logbook</td><td>&nbsp;</td><td>&nbsp;</td>
+  </tr>
+    <tr>
+    <td>LR</td><td>literature review</td><td>OT</td><td>other</td>
+  </tr>
+</table>';
+}
+
+/**
+ * Builds an HTML table from fields on the proposal form
+ *
+ * @return string
+ *   An html table of various fields on the proposal form
+ */
+function _ccms_get_award_outline_info_table($proposal_node) {
+
+  // get sanitised field content to build table with
+  $info = field_info_instance('node', 'field_working_title_of_award', 'proposal');
+  $field_working_title_of_award_label = $info['label'];
+  $field = field_get_items('node', $proposal_node, 'field_working_title_of_award');
+  $field_working_title_of_award_value = field_view_value('node', $proposal_node, 'field_working_title_of_award', $field[0]);
+    
+  $info = field_info_instance('node', 'field_awarding_institution', 'proposal');
+  $field_awarding_institution_label = $info['label'];
+  $field = field_get_items('node', $proposal_node, 'field_awarding_institution');
+  $field_awarding_institution_value = field_view_value('node', $proposal_node, 'field_awarding_institution', $field[0]);
+  
+  $info = field_info_instance('node', 'field_teaching_institution', 'proposal');
+  $field_teaching_institution_label = $info['label'];  
+  $field = field_get_items('node', $proposal_node, 'field_teaching_institution');
+  $field_teaching_institution_value = field_view_value('node', $proposal_node, 'field_teaching_institution', $field[0]);
+  
+  $info = field_info_instance('node', 'field_award_accredited_by', 'proposal');
+  $field_award_accredited_by_label = $info['label'];  
+  $field = field_get_items('node', $proposal_node, 'field_award_accredited_by');
+  $field_award_accredited_by_value = field_view_value('node', $proposal_node, 'field_award_accredited_by', $field[0]);
+  
+  $info = field_info_instance('node', 'field_final_award_level', 'proposal');
+  $field_final_award_level_label = $info['label'];  
+  $field = field_get_items('node', $proposal_node, 'field_final_award_level');
+  $field_final_award_level_value = field_view_value('node', $proposal_node, 'field_final_award_level', $field[0]);
+  
+  $info = field_info_instance('node', 'field_type_of_provision', 'proposal');
+  $field_type_of_provision_label = $info['label'];  
+  $field = field_get_items('node', $proposal_node, 'field_type_of_provision');
+  $field_type_of_provision_value = field_view_value('node', $proposal_node, 'field_type_of_provision', $field[0]);
+  
+  $info = field_info_instance('node', 'field_mode_of_study', 'proposal');
+  $field_mode_of_study_label = $info['label'];  
+  $field = field_get_items('node', $proposal_node, 'field_mode_of_study');
+  $field_mode_of_study_value = field_view_value('node', $proposal_node, 'field_mode_of_study', $field[0]);
+  
+  $info = field_info_instance('node', 'field_credit_weighting_equivalen', 'proposal');
+  $field_credit_weighting_equivalen_label = $info['label'];  
+  $field = field_get_items('node', $proposal_node, 'field_credit_weighting_equivalen');
+  $field_credit_weighting_equivalen_value = field_view_value('node', $proposal_node, 'field_credit_weighting_equivalen', $field[0]);
+  
+  $info = field_info_instance('node', 'field_relevant_qaa_subject', 'proposal');
+  $field_relevant_qaa_subject_label = $info['label'];  
+  $field = field_get_items('node', $proposal_node, 'field_relevant_qaa_subject');
+  $field_relevant_qaa_subject_value = field_view_value('node', $proposal_node, 'field_relevant_qaa_subject', $field[0]);
+  
+  $info = field_info_instance('node', 'field_department_and_programme', 'proposal');
+  $field_department_and_programme_label = $info['label'];  
+  $field = field_get_items('node', $proposal_node, 'field_department_and_programme');
+  $field_department_and_programme_value = field_view_value('node', $proposal_node, 'field_department_and_programme', $field[0]);
+  
+  $info = field_info_instance('node', 'field_lead_developer', 'proposal');
+  $field_lead_developer_label = $info['label'];  
+  $field = field_get_items('node', $proposal_node, 'field_department_and_programme');
+  $field_lead_developer_value = field_view_value('node', $proposal_node, 'field_lead_developer', $field[0]);
+  
+  $info = field_info_instance('node', 'field_proposed_dev_team', 'proposal');
+  $field_proposed_dev_team_label = $info['label'];  
+  $field = field_get_items('node', $proposal_node, 'field_proposed_dev_team');
+  $field_proposed_dev_team_value = field_view_value('node', $proposal_node, 'field_proposed_dev_team', $field[0]);
+  
+  $info = field_info_instance('node', 'field_approx_student_intake', 'proposal');
+  $field_approx_student_intake_label = $info['label'];  
+  $field = field_get_items('node', $proposal_node, 'field_approx_student_intake');
+  $field_approx_student_intake_value = field_view_value('node', $proposal_node, 'field_approx_student_intake', $field[0]);
+  
+  $info = field_info_instance('node', 'field_start_date_and_term_dates', 'proposal');
+  $field_start_date_and_term_dates_label = $info['label'];  
+  $field = field_get_items('node', $proposal_node, 'field_start_date_and_term_dates');
+  $field_start_date_and_term_dates_value = field_view_value('node', $proposal_node, 'field_start_date_and_term_dates', $field[0]);
+  
+  $info = field_info_instance('node', 'field_duration_of_award', 'proposal');
+  $field_duration_of_award_label = $info['label'];  
+  $field = field_get_items('node', $proposal_node, 'field_duration_of_award');
+  $field_duration_of_award_value = field_view_value('node', $proposal_node, 'field_duration_of_award', $field[0]);
+  
+  $info = field_info_instance('node', 'field_suggested_lifespan', 'proposal');
+  $field_suggested_lifespan_label = $info['label'];  
+  $field = field_get_items('node', $proposal_node, 'field_suggested_lifespan');
+  $field_suggested_lifespan_value = field_view_value('node', $proposal_node, 'field_suggested_lifespan', $field[0]);
+  
+  //build the table
+  $header = array(array('data' => 'New award outline information', 'colspan' => 3));
+  $rows[] = array('data' => array('1', $field_working_title_of_award_label, $field_working_title_of_award_value['#markup'] ? drupal_render($field_working_title_of_award_value) : 'No input',), 'no_striping' => TRUE,);
+  $rows[] = array('data' => array('2', $field_awarding_institution_label, $field_awarding_institution_value['#markup'] ? drupal_render($field_awarding_institution_value) : 'No input'), 'no_striping' => TRUE,);
+  $rows[] = array('data' => array('3', $field_teaching_institution_label, $field_teaching_institution_value['#markup'] ? drupal_render($field_teaching_institution_value) : 'No input'), 'no_striping' => TRUE,);
+  $rows[] = array('data' => array('4', $field_award_accredited_by_label, $field_award_accredited_by_value['#markup'] ? drupal_render($field_award_accredited_by_value) : 'No input'), 'no_striping' => TRUE,);
+  $rows[] = array('data' => array('5', $field_final_award_level_label, $field_final_award_level_value['#markup'] ? drupal_render($field_final_award_level_value) : 'No input'), 'no_striping' => TRUE,);
+  $rows[] = array('data' => array('6', $field_type_of_provision_label, $field_type_of_provision_value['#markup'] ? drupal_render($field_type_of_provision_value) : 'No input'), 'no_striping' => TRUE,);
+  $rows[] = array('data' => array('7', $field_mode_of_study_label, $field_mode_of_study_value['#markup'] ? drupal_render($field_mode_of_study_value) : 'No input'), 'no_striping' => TRUE,);
+  $rows[] = array('data' => array('8', $field_credit_weighting_equivalen_label, $field_credit_weighting_equivalen_value['#markup'] ? drupal_render($field_credit_weighting_equivalen_value) : 'No input'), 'no_striping' => TRUE,);
+  $rows[] = array('data' => array('9', $field_relevant_qaa_subject_label, $field_relevant_qaa_subject_value['#markup'] ? drupal_render($field_relevant_qaa_subject_value) : 'No input'), 'no_striping' => TRUE,);
+  $rows[] = array('data' => array('10', $field_department_and_programme_label, $field_department_and_programme_value['#markup'] ? drupal_render($field_department_and_programme_value) : 'No input'), 'no_striping' => TRUE,);
+  $rows[] = array('data' => array('11', $field_lead_developer_label, $field_lead_developer_value['#markup'] ? drupal_render($field_lead_developer_value) : 'No input'), 'no_striping' => TRUE,);
+  $rows[] = array('data' => array('12', $field_proposed_dev_team_label, $field_proposed_dev_team_value['#markup'] ? drupal_render($field_proposed_dev_team_value) : 'No input'), 'no_striping' => TRUE,);
+  $rows[] = array('data' => array('13', $field_approx_student_intake_label, $field_approx_student_intake_value['#markup'] ? drupal_render($field_approx_student_intake_value) : 'No input'), 'no_striping' => TRUE,);  
+  $rows[] = array('data' => array('14', $field_start_date_and_term_dates_label, $field_start_date_and_term_dates_value['#markup'] ? drupal_render($field_start_date_and_term_dates_value) : 'No input'), 'no_striping' => TRUE,);    
+  $rows[] = array('data' => array('15', $field_duration_of_award_label, $field_duration_of_award_value['#markup'] ? drupal_render($field_duration_of_award_value) : 'No input'), 'no_striping' => TRUE,);      
+  $rows[] = array('data' => array('16', $field_suggested_lifespan_label, $field_suggested_lifespan_value['#markup'] ? drupal_render($field_suggested_lifespan_value) : 'No input'), 'no_striping' => TRUE,);        
+  
+  return theme('table', array('header' => $header, 'rows' => $rows, 'sticky' => FALSE, 'attributes' => array('id' => 'proposal-award-outline-table', 'class' => 'no-page-break-inside')));
+
+}
+
+/**
+ * Returns the cv nid that the proposal or vds is a child of
+ *
+ * @return string or boolean FALSE
+ */
+function _ccms_get_cv_nid($node) {
+
+  //this function will generate errors if the standard node/add page is called
+  //as $node->nid won't be set.  We can ignore them.
+
+  if (($node->type == 'proposal') || ($node->type == 'validation_documentation_set')) { 
+    $query = new EntityFieldQuery();
+
+    $query->entityCondition('entity_type', 'node')
+      ->entityCondition('bundle', 'course_version')
+      ->propertyCondition('status', 1)
+      ->fieldCondition($node->type == 'proposal' ? 'field_proposal_ref' : 'field_vds_ref', 'target_id', $node->nid, '=')
+      ->addMetaData('account', user_load(1)); // Run the query as user 1.
+
+    $result = $query->execute();
+	$nids = array_keys($result['node']); // in our case there should only be one result
+    return $nids[0];
+  } else {
+    return FALSE;
+  }
+}
+
+/**
+ * Implements hook_wysiwyg_editor_settings_alter().
+ *
+ * Reduces the default height for CKeditor when it is invoked on text areas from the default of 420px;
+ * WYSWYG doesn't currently respect the rows setting on a field.  See http://drupal.org/node/1927922.
+ */
+function ccms_wysiwyg_editor_settings_alter(&$settings, $context) {
+
+  $settings['height'] = 220; // pixels
+  
+}
+
+/**
+ * Implements hook_username_alter
+ *
+ * Tries to substitute the full name field we've hopefully synced in from AD.
+ * Has the side effect that Views refuses to output the username when the [name]
+ * token is used.
+ */
+function ccms_username_alter(&$name, $account) {
+  $full_user = user_load($account->uid);
+  if (!empty($full_user->field_full_name)) {
+    $name = $full_user->field_full_name[LANGUAGE_NONE][0]['value'];
+  }
+}
+
+/**
+ * Implements hook_node_access()
+ *
+ * Denies update access to a proposal or vds if the parent course version is set to definitive.
+ * Denies access to a module if it is set to definitive
+ * This removes menu_local_tasks
+ */
+function ccms_node_access($node, $op, $account) {
+
+  // Bypass access checks for CCMS system admins on main node types whatever the op
+  // this avoids problems with View permission not being granted via node access user reference
+  if (is_object($node) && in_array('CCMS system admins', $account->roles) && in_array( $node->type, array('course_version', 'proposal', 'validation_documentation_set', 'module_version'))) {
+    return NODE_ACCESS_ALLOW;
+  }
+
+  if (is_object($node) && $op == 'update' && !in_array('CCMS system admins', $account->roles)) {
+    
+	if ($node->type == 'proposal' || $node->type == 'validation_documentation_set') {
+  
+      $cv_nid = _ccms_get_cv_nid($node);
+	  if (ccms_get_current_status($cv_nid, 'course_version') == 'definitive') {
+	    drupal_set_message('Course version is set to a status of Definitive.  Update access is therefore not available.', 'Warning');
+	    return NODE_ACCESS_DENY;  
+	  }
+    } elseif ( $node->type == 'module_version' && $node->field_module_status[$node->language][0]['value'] == 'finalised' ) {
+	    drupal_set_message('Module version is set to a status of Finalised.  Update access is therefore not available.', 'Warning');
+	    return NODE_ACCESS_DENY;
+	}
+  }
+  return NODE_ACCESS_IGNORE;
+}
+
+/**
+* Implements hook_admin_paths_alter().
+*/
+function ccms_admin_paths_alter(&$paths) {
+  $paths['admin/*'] = FALSE;
+  $paths['node/*/edit'] = FALSE;
+  $paths['node/add/course-version'] = FALSE;
+  $paths['node/add/module-version'] = FALSE;
+}

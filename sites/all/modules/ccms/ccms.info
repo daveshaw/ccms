@@ -1,0 +1,5 @@
+name = CCMS
+description = "Custom code for CCMS project"
+core = 7.x
+package = CCMS
+

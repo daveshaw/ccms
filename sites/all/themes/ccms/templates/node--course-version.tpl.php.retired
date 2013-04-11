@@ -1,0 +1,286 @@
+<?php
+
+/**
+ * @file
+ * CCMS's theme implementation to display a node.
+ *
+ * Available variables:
+ * - $title: the (sanitized) title of the node.
+ * - $content: An array of node items. Use render($content) to print them all,
+ *   or print a subset such as render($content['field_example']). Use
+ *   hide($content['field_example']) to temporarily suppress the printing of a
+ *   given element.
+ * - $user_picture: The node author's picture from user-picture.tpl.php.
+ * - $date: Formatted creation date. Preprocess functions can reformat it by
+ *   calling format_date() with the desired parameters on the $created variable.
+ * - $name: Themed username of node author output from theme_username().
+ * - $node_url: Direct URL of the current node.
+ * - $display_submitted: Whether submission information should be displayed.
+ * - $submitted: Submission information created from $name and $date during
+ *   template_preprocess_node().
+ * - $classes: String of classes that can be used to style contextually through
+ *   CSS. It can be manipulated through the variable $classes_array from
+ *   preprocess functions. The default values can be one or more of the
+ *   following:
+ *   - node: The current template type; for example, "theming hook".
+ *   - node-[type]: The current node type. For example, if the node is a
+ *     "Blog entry" it would result in "node-blog". Note that the machine
+ *     name will often be in a short form of the human readable label.
+ *   - node-teaser: Nodes in teaser form.
+ *   - node-preview: Nodes in preview mode.
+ *   The following are controlled through the node publishing options.
+ *   - node-promoted: Nodes promoted to the front page.
+ *   - node-sticky: Nodes ordered above other non-sticky nodes in teaser
+ *     listings.
+ *   - node-unpublished: Unpublished nodes visible only to administrators.
+ * - $title_prefix (array): An array containing additional output populated by
+ *   modules, intended to be displayed in front of the main title tag that
+ *   appears in the template.
+ * - $title_suffix (array): An array containing additional output populated by
+ *   modules, intended to be displayed after the main title tag that appears in
+ *   the template.
+ *
+ * Other variables:
+ * - $node: Full node object. Contains data that may not be safe.
+ * - $type: Node type; for example, story, page, blog, etc.
+ * - $comment_count: Number of comments attached to the node.
+ * - $uid: User ID of the node author.
+ * - $created: Time the node was published formatted in Unix timestamp.
+ * - $classes_array: Array of html class attribute values. It is flattened
+ *   into a string within the variable $classes.
+ * - $zebra: Outputs either "even" or "odd". Useful for zebra striping in
+ *   teaser listings.
+ * - $id: Position of the node. Increments each time it's output.
+ *
+ * Node status variables:
+ * - $view_mode: View mode; for example, "full", "teaser".
+ * - $teaser: Flag for the teaser state (shortcut for $view_mode == 'teaser').
+ * - $page: Flag for the full page state.
+ * - $promote: Flag for front page promotion state.
+ * - $sticky: Flags for sticky post setting.
+ * - $status: Flag for published status.
+ * - $comment: State of comment settings for the node.
+ * - $readmore: Flags true if the teaser content of the node cannot hold the
+ *   main body content.
+ * - $is_front: Flags true when presented in the front page.
+ * - $logged_in: Flags true when the current user is a logged-in member.
+ * - $is_admin: Flags true when the current user is an administrator.
+ *
+ * Field variables: for each field instance attached to the node a corresponding
+ * variable is defined; for example, $node->body becomes $body. When needing to
+ * access a field's raw values, developers/themers are strongly encouraged to
+ * use these variables. Otherwise they will have to explicitly specify the
+ * desired field language; for example, $node->body['en'], thus overriding any
+ * language negotiation rule that was previously applied.
+ *
+ * @see template_preprocess()
+ * @see template_preprocess_node()
+ * @see template_process()
+ */
+?>
+<?php global $user; ?>
+<div id="node-<?php print $node->nid; ?>" class="<?php print $classes; ?> clearfix"<?php print $attributes; ?>>
+
+  <?php print render($title_prefix); ?>
+  <?php if (!$page): ?>
+    <h2<?php print $title_attributes; ?>>
+      <a href="<?php print $node_url; ?>"><?php print $title; ?></a>
+    </h2>
+  <?php endif; ?>
+  <?php print render($title_suffix); ?>
+
+  <?php if ($display_submitted): ?>
+    <div class="meta submitted">
+      <?php print $user_picture; ?>
+      <?php print $submitted; ?>
+    </div>
+  <?php endif; ?>
+
+  <div class="content clearfix"<?php print $content_attributes; ?>>
+    <div id="cv-field-wrapper" class="clearfix">
+    <?php
+      // We hide the comments and links now so that we can render them later.
+      hide($content['comments']);
+      hide($content['links']);
+      //print render($content); // we're gonna do this by hand so we can 'compute' some meta-fields
+	  ?>
+	  <fieldset id="course-version-details" class="field-group-fieldset form-wrapper collapsible collapsed">
+	    <legend>
+		  <span class="fieldset-legend">Course version details</span>
+		</legend>
+		<div class="fieldset-wrapper">
+
+	  <?php 
+	  print render($content['field_primary_contact']);
+	  print render($content['field_version']);
+	  print render($content['field_validation_required']);
+	  print render($content['field_grant_proposal_update_ref']);
+      print render($content['field_grant_vds_update_ref']);
+	  print render($content['field_send_email_updates']); ?>
+
+	  <?php // manufacture the Created field
+	  print '<div class="field field-name-field-originally-created field-type-computed field-label-inline clearfix">';
+	  print '<div class="field-label">Originally created :&nbsp;</div>';
+      print '<div class="field-items">';
+	  print '<div class="field-item even">' . format_date($node->created) . ' by ' . $node->name . '</div>';
+	  print '</div></div>';
+	  
+	  // manufacture the Last modified by field
+	  $account = user_load($node->revision_uid);  // user who created this revision
+	  print '<div class="field field-name-field-last-updated field-type-computed field-label-inline clearfix">';
+	  print '<div class="field-label">Last updated :&nbsp;</div>';
+      print '<div class="field-items">';
+	  print '<div class="field-item even">' . format_date($node->changed) . ' by ' . $account->name . '</div>';
+	  print '</div></div>';
+	?>
+
+	  </div> <!-- .fieldset--wrapper -->
+	 </fieldset>
+	</div>  <!-- #cv-field-wrapper -->
+<!--	<div id="cv-nav-links" class="clearfix">
+      <ul>
+        <li class="left<?php if (!isset($node->field_prev_course_version_ref[$node->language][0]['target_id'])) { 
+		   print ' inactive"><< Previous version';
+		   } else {
+		    print '">' .l(t('<< Previous version'), 'node/' . $node->field_prev_course_version_ref[$node->language][0]['target_id'] . '/proposal');
+           } ?>
+		</li>
+		<li class="right<?php if (!isset($node->field_next_course_version_ref[$node->language][0]['target_id'])) { 
+		   print ' inactive"><span>Next version >></span>';
+		   } else {
+		    print '">' .l(t('Next version >>'), 'node/' . $node->field_next_course_version_ref[$node->language][0]['target_id'] . '/proposal');
+           } ?>
+		</li>
+	  </ul>
+	</div> <!-- #cv-nav-links -->
+	
+	<div id="courseVersionStatus" class="clearfix">
+      <?php 
+	    print '<h2>' . $node->title . ' Status History</h2>';
+	    if (in_array('CCMS system admins', array_values($user->roles))) {
+          print '<div>' . l('<< Update status >>', 'node/add/cv-status-change/' . $node->nid) . '</div>';
+		} else {
+		  print '<div class="not_permitted"><< Update status >></div>';
+		}
+        print 'Current status : ' . ccms_get_status_label(ccms_get_current_status($node->nid, 'course_version'));
+        print ccms_get_status_change_history_table($node->nid, 'course_version');
+      ?>
+    </div>  <!-- #courseVersionStatus -->
+  </div>  <!-- .content -->
+	
+	<div id="related" class="clearfix">
+
+      <?php
+  
+      // the second URL argument indicates which secondary TAB is active.  If none default to proposal
+      $tab = arg(2);
+	  if (!isset($tab)) {
+	    $tab = 'proposal';
+	  }
+  
+	  $proposalClass = $vdsClass = 'inactive';
+	
+	  if ($tab == 'proposal') {
+	    $proposalClass = 'active';
+	  } elseif ($tab == 'vds') {
+	    $vdsClass = 'active';
+	  }
+      ?>
+      <a name="#secondaryTabs"></a>
+	  <ul id="secondaryTabs" class="clearfix">
+	    <li class="<?php print $proposalClass; ?>"><?php print l(t('Proposal'), 'node/' . $node->nid . '/proposal', array('attributes' => array('class' => array($proposalClass)), 'fragment' => 'secondaryTabs')); ?></li>
+		<li class="<?php print $vdsClass; ?>">
+		<?php if (ccms_validation_required($node)) {
+           		print l(t('Validation doc set'), 'node/' . $node->nid . '/vds', array('attributes' => array('class' => array($vdsClass)), 'fragment' => 'secondaryTabs'));
+		      } else {
+			    print l(t('Module set'), 'node/' . $node->nid . '/vds', array('attributes' => array('class' => array($vdsClass)), 'fragment' => 'secondaryTabs'));
+			  }
+			  ?></li>
+	  </ul>
+	
+	  <?php
+      //  load the proposal or vds node for later use and flag whether the current user has update access
+	  if ($tab == 'proposal') {
+	    $tab_node = node_load($node->field_proposal_ref[$node->language][0]['target_id']);
+        // $update_access = node_access('update', $tab_node);  // we're not going to use real node_access because it doesn't work for creating status change nodes
+		$update_access = ccms_proposal_update_permitted($node->nid, $user->uid);
+	  } elseif ($tab == 'vds') {
+	    $tab_node = node_load($node->field_vds_ref[$node->language][0]['target_id']);
+	    // $update_access = node_access('update', $tab_node);
+		$update_access = ccms_vds_update_permitted($node->nid, $user->uid);
+	  }
+	  $tab_nid = $tab_node->nid;
+      ?>
+
+	    <ul id="secondaryTabLinks" class="clearfix">
+	      <?php
+		  if (ccms_has_revisions($tab_node)) {
+		    print '<li>' . l('<< Changes log >>', 'node/' . $tab_nid) . '</li>';
+		  } else {
+		    print '<li>' . '<< Changes log >>' . '</li>';
+		  }
+		  if ($tab == 'proposal') {
+		    if ($update_access) {
+		      print '<li>' . l('<< Update proposal >>', 'node/' . $tab_nid . '/edit/' . $node->nid, $options = array('query' => array('destination' => 'node/' . $node->nid . '/' . $tab))) . '</li>';
+			} else {
+		      print '<li class="not_permitted"><< Update proposal >></li>';
+			}
+		  } else {  // must be vds tab
+		    if (!$update_access) {
+			  print '<li class="not_permitted"><< Update proposal >></li>';
+			} elseif (ccms_validation_required($node)) {
+			  print '<li>' . l('<< Update vds >>', 'node/' . $tab_nid . '/edit/' . $node->nid, $options = array('query' => array('destination' => 'node/' . $node->nid . '/' . $tab))) . '</li>';
+			} else {  // validation not required
+			  print '<li>' . l('<< Update module set >>', 'node/' . $tab_nid . '/edit/' . $node->nid, $options = array('query' => array('destination' => 'node/' . $node->nid . '/' . $tab))) . '</li>';
+			}
+		  }
+		  ?>
+		  <li><< Generate PDF >></li>
+	    </ul>
+	<?php if (ccms_validation_required($node)) { ?>  
+	  <div id="<?php print $tab; ?>Status">
+        <?php print '<h2>' . ucfirst($tab) . ' Status History</h2>'; ?>
+		<div class="updatelink">
+        <?php 
+        if (!$update_access) {
+		  print '<span class="not_permitted"><< Update status >></span>';
+		} else {
+          print l('<< Update status >>', 'node/add/' . $tab . '-status-change/' . $node->nid);
+		} ?>
+		</div>  <!-- .updatelink -->
+		<?php
+		print '<p>Current status : ' . ccms_get_status_label(ccms_get_current_status($node->nid, $tab)) . '</p>';
+        print ccms_get_status_change_history_table($node->nid, $tab);
+        ?>
+      </div>  <!-- #proposal or vds Status -->
+      <?php } ?>
+    <?php
+    // Output the associated proposal or vds node
+	
+	if (($tab_node->type == 'proposal')  || (($tab_node->type == 'validation_documentation_set') && (ccms_validation_required($node)))) {
+	  print drupal_render(node_view($tab_node));	// defaults to 'full' view mode
+    } else { // must be a vds but non-validated so use a different View mode to reduce fields displayed to just the module
+	  print drupal_render(node_view($tab_node, 'module_set'));
+	}
+    ?>
+	
+	</div>  <!-- #related -->	  
+   
+  <?php
+    // Remove the "Add new comment" link on the teaser page or if the comment
+    // form is being displayed on the same page.
+    if ($teaser || !empty($content['comments']['comment_form'])) {
+      unset($content['links']['comment']['#links']['comment-add']);
+    }
+    // Only display the wrapper div if there are links.
+    $links = render($content['links']);
+    if ($links):
+  ?>
+    <div class="link-wrapper">
+      <?php print $links; ?>
+    </div>
+  <?php endif; ?>
+
+  <?php print render($content['comments']); ?>
+
+</div> <!-- .node -->

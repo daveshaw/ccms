@@ -1,0 +1,6 @@
+name = CCMS email
+description = Form to send an email to users associated with a course version
+core = 7.x
+package = CCMS
+
+

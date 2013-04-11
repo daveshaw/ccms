@@ -1,0 +1,92 @@
+<?php
+ 
+/**
+ * This is the callback for sending an email to the interested parties for a course version using the 
+ * URL form message/nid where nid is the CV
+ */
+function ccms_email_message_form($form, &$form_state)  {
+
+	$cv_node = node_load($form_state['build_info']['args'][0]);
+	$form_state['storage']['email_addresses_string'] = $email_addresses_string = ccms_get_email_update_addresses($cv_node);
+	
+    global $user;
+	
+	$form['form_title'] = array(
+	  '#markup' => '<h2>This is the title</h2>'
+	);
+	
+	$form['blurb'] = array(
+	  '#markup' => '<p>This message will be sent to the following email addresses associated with the course "' . $cv_node->title . '" :</p>'
+	);
+	$form['emails'] = array(
+	  '#markup' => '<p class="emails">' . $email_addresses_string . '</p>'
+	);
+
+    $form['sendername'] = array(
+        '#type'     => 'hidden',
+		'#value' 	=> $user->name
+    );
+	
+    $form['senderemail'] = array(
+        '#type' 	=> 'hidden',
+		'#value' 	=> $user->mail,
+    );	
+
+    $form['message'] = array(
+        '#title' 	=> t('Message'),
+        '#type' 	=> 'textarea',
+        '#rows' 	=> 5,
+		'#cols' 	=> 6,
+        '#required' => true
+    );
+	
+    $form['send'] = array(
+        '#type'  => 'submit',
+        '#value' => t('Send')
+    );
+	
+    return $form;
+}
+ 
+/**
+ * Validate the form
+ */
+function ccms_email_message_form_validate($form_id, &$form_state) {
+    
+}
+
+/**
+ * Submit the form
+ */
+function ccms_email_message_form_submit($form_id, &$form_state) {
+
+  $to = $form_state['storage']['email_addresses_string'];
+  $from = '"' . $form_state['values']['sendername'] . '" <' . $form_state['values']['senderemail'] . '>';
+	
+  $params = array('message' => $form_state['values']['message']);
+    
+  $result = drupal_mail('ccms_email', 'sendmessage', $to, language_default(), $params, $from);
+  
+  if ($result['result']) {
+    drupal_set_message(t('Email message successfully sent'));
+  } else {
+    drupal_set_message(t('There was a problem sending the email(s).', 'error'));
+  }
+  
+  $form_state['redirect'] = 'all-course-versions';  
+}
+
+
+function ccms_email_mail($key, &$message, $params) {
+  
+  $language = $message['language'];
+  switch($key) {
+	
+	case 'sendmessage':			
+			
+	  $message['subject'] = t('CCMS Contact Form message');
+	  $message['body'][]  = t('@message', array('@message' => $params['message']));  // TODO should this be through check_plain rather than t()
+
+	break;
+  }   
+}

@@ -1,0 +1,406 @@
+body,
+#site-slogan,
+.ui-widget,
+.comment-form label,
+fieldset legend,
+.node .content,
+table,
+.region-header .block {
+  font-family: "Helvetica Neue",Helvetica,Arial,sans-serif;
+  font-size:13px;
+}
+#content h2 ,
+#main-menu-links {
+  font-size:16px;
+}
+/* this is necessary to control the width of the overlay.  The Overlay Paths module doesn't
+ seem to respect the width parameter as the inline CSS doesn't get injected probably because we're
+ gotoing another path */
+.page-node-add-cv-status-change #overlay,
+.page-node-add-proposal-status-change #overlay,
+.page-node-add-vds-status-change #overlay {
+  width:800px;
+  min-width:800px;
+  margin:0 auto;
+}
+.page-node-add-cv-status-change #page-wrapper,
+.page-node-add-proposal-status-change #page-wrapper,
+.page-node-add-vds-status-change #page-wrapper {
+  min-width:500px;
+}
+
+.inactive {
+  color:gray;
+}
+#cv-nav-links ul {
+  margin:20px 10px;
+  padding:0;
+}
+#cv-nav-links li, #secondaryTabLinks li {
+  list-style-type:none;
+}
+#cv-nav-links li.left {
+  float:left;
+}
+#cv-nav-links li.right {
+  float:right;
+}
+#secondaryTabLinks {
+  clear:both;
+  padding:10px;
+  background-color:#ffffff;
+  margin:0;
+}
+#secondaryTabLinks li {
+  float:right;
+  padding:0 15px;
+}
+}
+div.status {
+  background-color:#BBEE77
+}
+.text-format-wrapper .description, .form-item .description {  /* help text */
+  margin:10px 0;
+}
+ul#secondaryTabs {
+  border-bottom:1px solid gray;
+  width:100%;
+  /* float:left; */
+  font-size: 15px;
+  height: 44px;
+  margin:0;
+  padding-top: 0;
+}
+ul#secondaryTabs li { 
+  float: left;
+  list-style: none outside none;
+  margin: 0 2px;
+}
+ul#secondaryTabs li.active {
+  background-color:#ffffff;
+}
+ul#secondaryTabs li a, ul#secondaryTabs li a:link, ul#secondaryTabs li a:link, ul#secondaryTabs li a:visited {
+  border-radius: 8px 8px 0 0;
+  border-style: solid;
+  border-width: 1px 1px 0 1px;
+  color: gray;
+  display: block;
+  float: left;
+  font-weight: bold;
+  height: 2.6em;
+  line-height: 2.6em;
+  padding: 0 18px 8px;
+}
+ul#secondaryTabs li a.active {
+  border-bottom:2px solid #ffffff !important;  /* kludge to get border hidden in all browser.  Can seem to add up my pixels otherwise */
+}
+form#views-exposed-form-course-versions-page .bef-checkboxes .form-item,
+form#views-exposed-form-course-versions-archive .bef-checkboxes .form-item {
+  float:left;
+  padding: 15px;
+  width:100px;
+}
+.status_change_table {
+  margin:40px 0;
+}
+.page-all-course-versions .view-header, .page-all-module-versions .view-header {
+  float:right;
+}
+/* hide diff added and make all adds and changes appear as changes because of http://drupal.org/node/1951546 */
+.diff-inline-metadata .diff-added {
+  display: none;
+}
+span.diff-added {
+  background:none repeat scroll 0 0 #39E639; /* bright green */
+}
+span.diff-changed {
+  background:none repeat scroll 0 0 #39E639;
+}
+span.diff-deleted {
+  color:#CCCCCC;
+  background:none repeat scroll 0 0 #FF4040;
+}
+.region-header {
+  margin-top:0px;
+}
+.region-header .block {
+  padding:5px;
+  margin:5px;
+  text-align:center;
+  clear:both;
+  color:#333333;
+  border:1px solid gray;
+  border-radius:4px;
+}
+#name-and-slogan {
+  margin-bottom:0px;
+}
+#block-user-login {
+  text-align:left;
+}
+#courseVersionStatus, #proposalStatus, #vdsStatus {
+padding:0 20px 20px 20px;
+margin:30px 0;
+border:1px solid gray;
+border-radius:4px;
+}
+#courseVersionStatus h2, #proposalStatus h2, #vdsStatus h2 {
+  margin-bottom:10px;
+}
+div.updatelink {
+  float:right;
+}
+#courseVersionStatus div {
+  float:right;
+}
+.view-manage-course-presentations .views-exposed-form {
+  border:1px solid #3B3B3B;
+}
+
+fieldset.filter-wrapper {
+  display:none;
+}
+
+/* remove the 'row weights' link from multivalue fields for the sake of tidiness.  Drag handles remain. */
+form.node-form .tabledrag-toggle-weight-wrapper {
+  display:none;
+}
+.node-module-version  .field,
+.node-course-version  .field ,
+.node-proposal  .field,
+.node-validation-documentation-set  .field {
+  margin-bottom:20px;
+}
+
+.no-page-break-inside {
+  page-break-inside:avoid;
+}
+.view-module-versions .view-header {
+  margin:0 0 20px 0;
+}
+.view-module-versions .view-content {
+  clear:both;
+}
+.markup-section-heading {
+  font-size:16px;
+  font-weight:bold;
+  margin:35px 0 20px 0;
+  clear:both;
+}
+.break-before {
+  page-break-before:always;
+}
+.markup-normal {
+  clear:both;
+}
+.node-proposal .cell-above {
+  border-left:1px solid gray;
+  border-right:1px solid gray;
+  border-top:1px solid gray;
+  padding:10px 5px;
+  font-weight:bold;
+}
+.node-proposal div.field-name-field-author-name {
+  width:400px;
+  margin:100px auto;
+  page-break-after:always;
+}
+.node-proposal div.field-name-field-author-name .field-label, .node-proposal div.field-name-field-author-name .field-items {
+  border:none;
+  width:auto;
+  background-color:transparent;  
+}
+.node-form .form-item label {
+  font-size:16px;
+  margin:0 0 5px 0;
+}
+#course-version-node-form .form-wrapper {
+  padding:10px 0;
+}
+
+#proposal-node-form  fieldset .fieldset-wrapper > div,
+#course-version-node-form  fieldset .fieldset-wrapper > div,
+#validation-documentation-set-node-form  fieldset .fieldset-wrapper > div,
+#module-version-node-form  fieldset .fieldset-wrapper > div  {
+  padding:10px 0;
+}
+#form-clo-title {
+  font-weight:bold;
+  margin:20px 0 0 0;
+  font-size:16px;
+}
+.field-group-htabs-wrapper {
+  margin:30px 0 0 0;
+}
+#proposal-award-outline-table {
+  margin:30px 0;
+}
+#proposal-award-outline-table th, #proposal-award-outline-table td {
+  background-color:transparent;
+  border:1px solid gray;
+}
+#proposal-award-outline-table th {
+  color:#3B3B3B;
+}
+#proposal-award-outline-table tr > td:nth-child(1) {
+  width:20px;
+  text-align:center;
+}
+#proposal-award-outline-table tr > td:nth-child(2) {
+  width:300px;
+}
+
+table.assmnt_methods th {
+  text-align:center;
+}
+table.assmnt_methods tr td {
+  padding:0 9px;
+}
+
+.node-module-version  .field,
+.node-course-version  .field ,
+.node-proposal  .field,
+.node-validation-documentation-set  .field {
+  margin-bottom:10px;
+  width:930px;
+}
+
+.node-course-version .field-label-inline .field-label,
+.node-proposal .field-label-inline .field-label,
+.node-validation-documentation-set .field-label-inline .field-label,
+.node-module-version .field-label-inline .field-label {
+  width:239px;
+  min-height:40px;
+  border-left:1px solid gray;
+  border-top:1px solid gray;
+  border-bottom:1px solid gray;
+  padding:5px;
+  background-color:#aeb0b2;
+}
+.node-course-version .field-label-inline .field-items,
+.node-proposal .field-label-inline .field-items,
+.node-validation-documentation-set  .field-label-inline .field-items,
+.node-module-version  .field-label-inline .field-items {
+  width:668px;
+  min-height:40px;
+  border:1px solid gray;
+  padding:5px;
+}
+.node-course-version .field-label-above .field-label,
+.node-proposal .field-label-above .field-label,
+.node-validation-documentation-set .field-label-above .field-label,
+.node-module-version .field-label-above .field-label {
+  border:1px solid gray;
+  padding:5px;
+  background-color:#aeb0b2;
+}
+.node-course-version .field-label-above .field-items,
+.node-proposal .field-label-above .field-items,
+.node-validation-documentation-set .field-label-above .field-items,
+.node-module-version .field-label-above .field-items {
+  border-right:1px solid gray;
+  border-left:1px solid gray;
+  border-bottom:1px solid gray;
+  padding:5px;
+}
+.node-proposal #ucf-logo {
+  width:209px;
+  margin:200px auto 100px auto;
+  display:block;
+}
+.node-module-version #ucf-logo, .node-validation-documentation-set #ucf-logo {
+  width:209px;
+  margin:0 0 50px 0;
+  float:right;
+}
+.node-module-version .group_clo h3 {
+  display:block;
+  padding:10px;
+  border:1px solid gray;
+  margin:20px 0 -11px 0;
+  font-weight:bold;
+}
+.proposal-title {
+  font-weight:bold;
+  font-size:22px;
+  margin:0 0 4px 0;
+  text-align:center;  
+}
+
+table#fgm-node-module-version-form-group-assessment-methods-values tr th,
+table#fgm-node-module-version-form-group-assessment-methods-values tr td {
+  padding:4px;
+  text-align:center;
+}
+
+table#fgm-node-module-version-form-group-assessment-methods-values th:nth-child(1) {
+  width:30px;
+}
+table#fgm-node-module-version-form-group-assessment-methods-values th:nth-child(2) {
+  width:60px;
+}
+table#fgm-node-module-version-form-group-assessment-methods-values th:nth-child(3) {
+  width:70px;
+}
+table#fgm-node-module-version-form-group-assessment-methods-values th:nth-child(4) {
+  width:25px;
+}
+
+fieldset legend {
+  font-weight:bold;
+  font-size:14px;
+}
+.region-header .block {
+  float:right;
+}
+
+/* Theme module views for PDF output */
+
+.view-module .views-field {
+  clear:both;
+  margin-top:10px;
+}
+
+.view-module .inline-label {
+  width:226px;
+  min-height:100px;
+  padding:10px;
+  background-color:#d8d8d8;
+  float:left;
+  border-top:2px solid #707070;
+  border-left:2px solid #707070;
+  border-bottom:2px solid #707070;
+}
+/*.view-module .views-field:first-child .inline-label, .view-module .views-field:first-child .inline-content {
+    border-top:2px solid #707070;
+} */
+.view-module .inline-content {
+  width:550px;
+  min-height:100px;
+  padding:10px;
+  float:left;
+  border-top:2px solid #707070;
+  border-right:2px solid #707070;
+  border-left:2px solid #707070;
+  border-bottom:2px solid #707070;
+}
+
+#content .view-module h2 {
+  font-size:16px;
+}
+
+/* Theme proposal approval table */
+#proposal-approval-table {
+  margin:30px auto;
+  width:600px;
+  background-color:white;
+  color:#3B3B3B;
+}
+#proposal-approval-table th, #proposal-approval-table td {
+  color:#3B3B3B;
+  background-color:white;
+  border: 1px solid black;
+}
+#proposal-approval-table tbody tr {
+  height:100px;
+}

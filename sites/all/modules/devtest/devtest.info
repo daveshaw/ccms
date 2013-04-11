@@ -1,0 +1,5 @@
+name = DevTest
+description = "Test code for CCMS project"
+core = 7.x
+package = CCMS
+
