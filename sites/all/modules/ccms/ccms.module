@@ -347,6 +347,12 @@ function ccms_node_insert($node) {
       //we link to this form always with the parent course_version nid in the URL i.e. node/add/cv-status-change/123
 	  //if we are creating programatically ( i.e. new course version ) there is no 3rd URL parameter so do nothing
       if ($cv_node = node_load(arg(3))) {
+	  
+	    // if we are setting a course version to definitive set any previous version to superseded
+		if (isset($cv_node->field_prev_course_version_ref[$new_cv->language][0]['target_id'])) {
+		// TODO !!!
+		}
+	
 	    $cv_node->field_cv_status_changes_ref[$cv_node->language][]['target_id'] = $node->nid;  // reference the status change from the course_version
 	    node_save($cv_node);
 	    // send email notification of the status change to all referenced parties
@@ -1379,7 +1385,6 @@ function ccms_form_cv_status_change_node_form_alter(&$form, &$form_state, $form_
      case 'not_commenced':
        $form['field_cv_status_change'][$form['field_cv_status_change']['#language']]['#options'] = array('not_commenced' => 'Development not yet commenced',
 																										 'in_dev' => 'In development',                                                               
-																										 'superseded' => 'Superseded',
 																										 'suspended' => 'Suspended',
 																										 'ceased' => 'Ceased',);
        break;
@@ -1387,32 +1392,27 @@ function ccms_form_cv_status_change_node_form_alter(&$form, &$form_state, $form_
 	   if ($validation_required) {
          $form['field_cv_status_change'][$form['field_cv_status_change']['#language']]['#options'] = array('in_dev' => 'In development',
 																										 'definitive' => 'Definitive',
-																										 'superseded' => 'Superseded',
 																										 'suspended' => 'Suspended',
 																										 'rejected' => 'Rejected',);
 	   } else {
          $form['field_cv_status_change'][$form['field_cv_status_change']['#language']]['#options'] = array('in_dev' => 'In development',
 																										   'definitive_no_validation' => 'Definitive ( validation not required )',
-																										   'superseded' => 'Superseded',
 																										   'suspended' => 'Suspended',
 																										   'rejected' => 'Rejected',);
 	   }
        break;
 	 case 'definitive':
        $form['field_cv_status_change'][$form['field_cv_status_change']['#language']]['#options'] = array('definitive' => 'Definitive',
-																										 'superseded' => 'Superseded',
 																										 'suspended' => 'Suspended',
 																										 'ceased' => 'Ceased',);
        break;
 	 case 'definitive_no_validation':
 	   if ($validation_required) {
 	     $form['field_cv_status_change'][$form['field_cv_status_change']['#language']]['#options'] = array('definitive' => 'Definitive',
-																										   'superseded' => 'Superseded',
 																										   'suspended' => 'Suspended',
 																										   'ceased' => 'Ceased',);
 	   } else {
 	     $form['field_cv_status_change'][$form['field_cv_status_change']['#language']]['#options'] = array('definitive_no_validation' => 'Definitive ( validation not required )',
-																										   'superseded' => 'Superseded',
 																										   'suspended' => 'Suspended',
 																										   'ceased' => 'Ceased',);
        }																										 
@@ -2092,7 +2092,7 @@ function _ccms_get_award_outline_info_table($proposal_node) {
   
   $info = field_info_instance('node', 'field_lead_developer', 'proposal');
   $field_lead_developer_label = $info['label'];  
-  $field = field_get_items('node', $proposal_node, 'field_department_and_programme');
+  $field = field_get_items('node', $proposal_node, 'field_lead_developer');
   $field_lead_developer_value = field_view_value('node', $proposal_node, 'field_lead_developer', $field[0]);
   
   $info = field_info_instance('node', 'field_proposed_dev_team', 'proposal');
