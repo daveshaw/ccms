@@ -404,3 +404,7 @@ fieldset legend {
 #proposal-approval-table tbody tr {
   height:100px;
 }
+/* Hide the page title on the Email contributors form page */
+.page-node-email h1#page-title {
+  display:none;
+}
