@@ -1,5 +1,5 @@
 
-name = CCMS
+name = CCMS Theme
 description = A replica ( not subtheme ) of core 7.17 Bartik 
 package = Core
 version = VERSION
@@ -8,7 +8,7 @@ core = 7.x
 stylesheets[all][] = css/layout.css
 stylesheets[all][] = css/style.css
 stylesheets[all][] = css/colors.css
-stylesheets[all][] = css/ccms.css
+stylesheets[all][] = css/ccmstheme.css
 stylesheets[print][] = css/print.css
 
 regions[header] = Header

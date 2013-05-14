@@ -9,44 +9,43 @@
 function ccms_email_message_form($form, $form_state, $cv_node)  {
 
   $form_state['storage']['email_addresses_string'] = $email_addresses_string = ccms_get_email_update_addresses($cv_node);
-	
+    
   global $user;
-	
+    
   $form['form_title'] = array(
-	'#markup' => '<h1>Send an email to the contributors to this course version</h1>'
+    '#markup' => '<h1>Send an email to the contributors to this course version</h1>'
   );
-	
+    
   $form['blurb'] = array(
-	'#markup' => '<p>This message will be sent to the following email addresses associated with the course "' . $cv_node->title . '" :</p>'
+    '#markup' => '<p>This message will be sent to the following email addresses associated with the course "' . $cv_node->title . '" :</p>'
   );
   $form['emails'] = array(
-	'#markup' => '<p class="emails">' . $email_addresses_string . '</p>'
+    '#markup' => '<p class="emails">' . $email_addresses_string . '</p>'
   );
 
   $form['sendername'] = array(
     '#type'     => 'hidden',
-    '#value' 	=> $user->name
+    '#value'     => $user->name
   );
-	
+    
   $form['senderemail'] = array(
-    '#type' 	=> 'hidden',
-    '#value' 	=> $user->mail,
-  );	
+    '#type'  => 'hidden',
+    '#value' => $user->mail,
+  );    
 
-    $form['message'] = array(
-        '#title' 	=> t('Message'),
-        '#type' 	=> 'textarea',
-        '#rows' 	=> 5,
-		'#cols' 	=> 6,
-        '#required' => true
-    );
-	
-    $form['send'] = array(
-        '#type'  => 'submit',
-        '#value' => t('Send')
-    );
-	
-    return $form;
+  $form['message'] = array(
+    '#title'    => t('Message'),
+    '#type'     => 'textarea',
+    '#rows'     => 5,
+    '#cols'     => 6,
+    '#required' => true
+  );
+    
+  $form['send'] = array(
+    '#type'  => 'submit',
+    '#value' => t('Send')
+  );    
+  return $form;
 }
  
 /**
@@ -63,7 +62,7 @@ function ccms_email_message_form_submit($form_id, &$form_state) {
 
   $to = $form_state['storage']['email_addresses_string'];
   $from = '"' . $form_state['values']['sendername'] . '" <' . $form_state['values']['senderemail'] . '>';
-	
+    
   $params = array('message' => $form_state['values']['message']);
     
   $result = drupal_mail('ccms_email', 'sendmessage', $to, language_default(), $params, $from);
@@ -82,12 +81,12 @@ function ccms_email_mail($key, &$message, $params) {
   
   $language = $message['language'];
   switch($key) {
-	
-	case 'sendmessage':			
-			
-	  $message['subject'] = t('CCMS Contact Form message');
-	  $message['body'][]  = t('@message', array('@message' => $params['message']));  // TODO should this be through check_plain rather than t()
+    
+    case 'sendmessage':            
+            
+      $message['subject'] = t('CCMS Contact Form message');
+      $message['body'][]  = t('@message', array('@message' => $params['message']));  // TODO should this be through check_plain rather than t()
 
-	break;
+    break;
   }   
 }
