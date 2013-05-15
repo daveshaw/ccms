@@ -59,7 +59,6 @@ function ccms_email_message_form_validate($form_id, &$form_state) {
  * Submit the form
  */
 function ccms_email_message_form_submit($form_id, &$form_state) {
-
   $to = $form_state['storage']['email_addresses_string'];
   $from = '"' . $form_state['values']['sendername'] . '" <' . $form_state['values']['senderemail'] . '>';
     
@@ -76,9 +75,11 @@ function ccms_email_message_form_submit($form_id, &$form_state) {
   $form_state['redirect'] = 'all-course-versions';  
 }
 
+/**
+ * Implements hook_mail().
+ */
 
-function ccms_email_mail($key, &$message, $params) {
-  
+function ccms_email_mail($key, &$message, $params) {  
   $language = $message['language'];
   switch($key) {
     
