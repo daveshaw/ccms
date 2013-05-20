@@ -1,13 +1,17 @@
 <?php
 
 /**
+ * @file
+ * Form and email functions for sending email to persons 'related' to a course version.
+ */
+
+/**
  * Send an email to the interested parties for a course version.
  *
  * URL path format node/%node/email where node is always of type 'course_version'.
  *
  */
 function ccms_email_message_form($form, $form_state, $cv_node)  {
-
   $form_state['storage']['email_addresses_string'] = $email_addresses_string = ccms_get_email_update_addresses($cv_node);
     
   global $user;
@@ -49,13 +53,6 @@ function ccms_email_message_form($form, $form_state, $cv_node)  {
 }
  
 /**
- * Validate the form
- */
-function ccms_email_message_form_validate($form_id, &$form_state) {
-    
-}
-
-/**
  * Submit the form
  */
 function ccms_email_message_form_submit($form_id, &$form_state) {
@@ -68,7 +65,8 @@ function ccms_email_message_form_submit($form_id, &$form_state) {
   
   if ($result['result']) {
     drupal_set_message(t('Email message successfully sent'));
-  } else {
+  }
+  else {
     drupal_set_message(t('There was a problem sending the email(s).', 'error'));
   }
   
@@ -78,16 +76,12 @@ function ccms_email_message_form_submit($form_id, &$form_state) {
 /**
  * Implements hook_mail().
  */
-
 function ccms_email_mail($key, &$message, $params) {  
   $language = $message['language'];
-  switch($key) {
-    
+  switch ($key) {    
     case 'sendmessage':            
-            
       $message['subject'] = t('CCMS Contact Form message');
-      $message['body'][]  = t('@message', array('@message' => $params['message']));  // TODO should this be through check_plain rather than t()
-
+      $message['body'][]  = t('@message', array('@message' => $params['message']));
     break;
   }   
 }
