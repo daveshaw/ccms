@@ -91,10 +91,11 @@ function ccms_menu() {
     'title' => 'Changes',
     // The page callback also invokes drupal_set_title() in case
     // the menu router's title is overridden by a menu link.
-    'page callback' => 'node_page_view',
+    'page callback' => 'changes_page_view',
     'page arguments' => array(1),
 	'type' => MENU_LOCAL_TASK,
-    'access callback' => '_ccms_show_changes_task',
+	'access callback' => TRUE,
+    'access callback' => '_ccms_show_changes_task',  // only TRUE for proposal and v doc set
     'access arguments' => array(1),
 	'weight' => 15,
   );
@@ -118,6 +119,23 @@ function ccms_menu() {
   );
   
   return $items;
+}
+
+/**
+ * Returns a node View for the Changes ( revisions ) page
+ *
+ * If the node has no revisions a block indicating so is displayed at the page top elsewise
+ * the inline differences block is displayed allowing the user to highlight revision differences.
+ * The reason this function exists is that we want the Changes tab to be visible and therefore clockable
+ * whether there are revisions or not, as it is disorienting for the user when the tab isn't there.
+ *
+ * @param object $node
+ *
+ * @return array
+ *   A renderable node object
+ */
+function changes_page_view($node) {
+  return node_page_view($node);
 }
 
 /**
@@ -147,10 +165,11 @@ function _ccms_show_update_status_task($node) {
  * @return boolean
  */
 function _ccms_show_changes_task($node) {
-  if (!in_array($node->type, array('proposal', 'validation_documentation_set'))) {
-    return FALSE;
+  if (in_array($node->type, array('proposal', 'validation_documentation_set'))) {
+    return TRUE;
+  } else {
+  return FALSE;
   }
-  return _ccms_has_revisions($node);
 }
 
 /**
