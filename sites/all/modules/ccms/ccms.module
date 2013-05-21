@@ -289,6 +289,9 @@ function _ccms_update_status_tab_title($node) {
  * Change Drupal default menu local tasks ( tab text ) and hide unwanted tabs.
  */
 function ccms_menu_alter(&$items) {
+  $items['node/%node']['page callback'] = 'ccms_node_page_view';  //override to allow us to specify a View mode
+  $items['node/%node']['page arguments'] = array(1);
+  
   $items['node/%node/view']['title callback'] = '_ccms_local_task_title_override';
   $items['node/%node/view']['title arguments'] = array(1, 'View');
 
@@ -302,6 +305,71 @@ function ccms_menu_alter(&$items) {
   if ($user->uid <> 1) {
    $items['node/%node/devel']['access callback'] = FALSE;
   }
+}
+
+/**
+ * Menu callback: Override for node_page_view()
+ *
+ * Allows us to call a custom version of node_show which isn't hardcoded to display the 'full' view mode.
+ * This allows us to control the view mode of the quality doc set so most fields don't display when validation 
+ * isn't required.
+ *
+ * @param $node
+ *   The node object.
+ *
+ * @return
+ *   A page array suitable for use by drupal_render().
+ *
+ * @see node_menu()
+ */
+function ccms_node_page_view($node) {
+  // If there is a menu link to this node, the link becomes the last part
+  // of the active trail, and the link name becomes the page title.
+  // Thus, we must explicitly set the page title to be the node title.
+  drupal_set_title($node->title);
+  $uri = entity_uri('node', $node);
+  // Set the node path as the canonical URL to prevent duplicate content.
+  drupal_add_html_head_link(array('rel' => 'canonical', 'href' => url($uri['path'], $uri['options'])), TRUE);
+  // Set the non-aliased path as a default shortlink.
+  drupal_add_html_head_link(array('rel' => 'shortlink', 'href' => url($uri['path'], array_merge($uri['options'], array('alias' => TRUE)))), TRUE);
+  return ccms_node_show($node);
+}
+
+/**
+ * Generates an array which displays a node detail page.
+ *
+ * Override for node_show() to allow a view mode to be set
+ *
+ * @param $node
+ *   A node object.
+ * @param $message
+ *   A flag which sets a page title relevant to the revision being viewed.
+ *
+ * @return
+ *   A $page element suitable for use by drupal_render().
+ */
+function ccms_node_show($node, $message = FALSE) {
+  if ($message) {
+    drupal_set_title(t('Revision of %title from %date', array('%title' => $node->title, '%date' => format_date($node->revision_timestamp))), PASS_THROUGH);
+  }
+  
+  //  CCMS specifics for view mode
+  $view_mode = 'full';
+  if ($node->type == 'validation_documentation_set') {
+    $cv_node = node_load(_ccms_get_cv_nid($node));  // get the parent course_version node
+    if ($cv_node->field_validation_required[$cv_node->language][0]['value'] == '0') {
+      $view_mode = 'module_set';
+    }
+  }
+
+  // For markup consistency with other pages, use node_view_multiple() rather than node_view().
+  // $nodes = node_view_multiple(array($node->nid => $node), 'full'); // the original line
+  $nodes = node_view_multiple(array($node->nid => $node), $view_mode);
+
+  // Update the history table, stating that this user viewed this node.
+  node_tag_new($node);
+
+  return $nodes;
 }
 
 /**
@@ -1959,7 +2027,12 @@ function ccms_field_extra_fields() {
        'label' => t('VDS front page logo image'),
        'description' => t('VDS logo image added by ccms_node_view()'),
        'weight' => 10,
-     ),    
+     ),
+       'ccms_vds_intro' => array(
+       'label' => t('VDS front intro text'),
+       'description' => t('VDS front intro text added by ccms_node_view()'),
+       'weight' => 10,
+     ),	 
     'ccms_vds_section_1' => array(
        'label' => t('VDS Section 1 heading'),
        'description' => t('VDS Section 1 heading added by ccms_node_view()'),
