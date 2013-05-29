@@ -51,8 +51,8 @@ function ccms_menu() {
     'page callback' => '_ccms_get_status_history_table',
     'page arguments' => array(1),
     'type' => MENU_LOCAL_TASK,
-    'access callback' => 'ccms_ct_type_is',
-    'access arguments' => array(1, array('course_version', 'proposal', 'validation_documentation_set')),
+    'access callback' => 'ccms_show_status_history_task',
+    'access arguments' => array(1),
     'weight' => 5,
   ); 
   $items['node/%node/update-status'] = array(
@@ -137,22 +137,78 @@ function changes_page_view($node) {
   return node_page_view($node);
 }
 
+
+/**
+ * Access callback for status history tab
+ */
+function ccms_show_status_history_task($node) {
+  if (in_array($node->type, array('course_version', 'proposal'))) {
+    return TRUE;
+  }
+  elseif ($node->type == 'validation_documentation_set' && _ccms_is_validation_required($node)) {
+    return TRUE;
+  }
+  else {
+    return FALSE;
+  }
+}
+
+/**
+ * Flags whether a course_version, proposal or vds is set to require validation.
+ *
+ * @param object $node
+ *
+ * @return boolean
+ *   FALSE if inappropriate node type.
+ */
+function _ccms_is_validation_required($node) {
+  if (!in_array($node->type, array('course_version', 'proposal', 'validation_documentation_set'))) {
+    drupal_set_message('ccms_is_validation_required() called for inappropriate node type', 'warning');
+    return FALSE;
+  }
+  switch ($node->type) {
+    case 'course_version' :
+      if ($node->field_validation_required[$node->language][0]['value']) {
+        return TRUE;
+      }
+      else {
+        return FALSE;
+      }
+      break;
+    case 'proposal':
+    case 'validation_documentation_set':
+      $cv_node = node_load(_ccms_get_cv_nid($node));
+      if ($cv_node->field_validation_required[$cv_node->language][0]['value']) {
+        return TRUE;
+      }
+      else {
+        return FALSE;
+      }
+      break;
+  }
+}
+
 /**
  * Helper function to decide whether to show the node/%/update-status menu local task.
- * Only shows on specific content types and only to system admins or Drupal Administrator.
+ *
+ * Only shows on specific content types, if validation is required,
+ * and only to system admins or Drupal Administrator.
  *
  * @param object
  *
  * @return boolean
  */
 function _ccms_show_update_status_task($node) {
-  if (in_array($node->type, array('course_version', 'proposal', 'validation_documentation_set'))) {
-    global $user;
-    if ($user->uid == 1 || in_array('CCMS system admins', array_values($user->roles))) {
+  global $user;
+  if ($user->uid == 1 || in_array('CCMS system admins', array_values($user->roles))) {
+    if ($node->type == 'course_version' || $node->type == 'proposal') {
       return TRUE;
     }
-  }
+    elseif ($node->type == 'validation_documentation_set' && _ccms_is_validation_required($node)) {
+      return TRUE;
+    }
   return FALSE;
+  }
 }
 
 /**
@@ -2032,7 +2088,7 @@ function ccms_field_extra_fields() {
        'label' => t('VDS front intro text'),
        'description' => t('VDS front intro text added by ccms_node_view()'),
        'weight' => 10,
-     ),	 
+     ),     
     'ccms_vds_section_1' => array(
        'label' => t('VDS Section 1 heading'),
        'description' => t('VDS Section 1 heading added by ccms_node_view()'),
