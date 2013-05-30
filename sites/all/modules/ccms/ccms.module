@@ -862,7 +862,7 @@ function ccms_create_next_module_version($original_module_nid) {
   unset($new_module->vid);
   unset($new_module->created);
   $new_module->field_version[$new_module->language][0]['value']++;  // inc the version
-  unset($new_module->field_next_course_version_ref);
+  unset($new_module->field_next_module_version_ref);
   $new_module->field_prev_module_version_ref[$new_module->language][0]['target_id'] = $original_module_nid;
   $new_module->field_module_status[$new_module->language][0]['value'] = 'not_commenced';
   
@@ -900,8 +900,8 @@ function ccms_node_delete($node) {
       if (isset($node->field_prev_course_version_ref[$node->language][0]['target_id'])) {
         $prev_cv = node_load($node->field_prev_course_version_ref[$node->language][0]['target_id']);
           if ($prev_cv) {
-          unset($prev_cv->field_next_course_version_ref);
-          node_save($prev_cv);
+            unset($prev_cv->field_next_course_version_ref);
+            node_save($prev_cv);
           }
       }
       
@@ -934,6 +934,15 @@ function ccms_node_delete($node) {
       foreach ($node->field_vds_status_changes_ref[$node->language] as $ref) {
         node_delete($ref['target_id']);
       }      
+      break;
+    case 'module_version':
+      if (isset($node->field_prev_module_version_ref[$node->language][0]['target_id'])) {
+        $prev_module = node_load($node->field_prev_module_version_ref[$node->language][0]['target_id']);
+          if ($prev_module) {
+            unset($prev_module->field_next_module_version_ref[$node->language]);
+            node_save($prev_module);
+          }
+      }
       break;
   }
 }
@@ -2435,11 +2444,16 @@ function ccms_username_alter(&$name, $account) {
 function ccms_node_access($node, $op, $account) {
   // Bypass access checks for CCMS system admins on main node types whatever the op
   // this avoids problems with View permission not being granted via node access user reference
-  if (is_object($node) && in_array('CCMS system admins', $account->roles) && in_array( $node->type, array('course_version', 'proposal', 'validation_documentation_set', 'module_version'))) {
+  if (!is_object($node) || !in_array( $node->type, array('course_version', 'proposal', 'validation_documentation_set', 'module_version'))) {
+    return NODE_ACCESS_IGNORE;  // not relevant to this module
+  }
+  if (in_array('CCMS system admins', $account->roles)) {
     return NODE_ACCESS_ALLOW;
   }
-
-  if (is_object($node) && $op == 'update' && !in_array('CCMS system admins', $account->roles)) {
+  
+  global $user;
+  
+  if ($op == 'update') {
     
     if ($node->type == 'proposal' || $node->type == 'validation_documentation_set') {
   
@@ -2449,9 +2463,19 @@ function ccms_node_access($node, $op, $account) {
         return NODE_ACCESS_DENY;  
       }
     }
-    elseif ( $node->type == 'module_version' && $node->field_module_status[$node->language][0]['value'] == 'finalised' ) {
-      drupal_set_message(t('Module version is set to a status of Finalised.  Update access is therefore not available.'), 'Warning');
-      return NODE_ACCESS_DENY;
+    elseif ($node->type == 'module_version') {
+      if ($node->field_module_status[$node->language][0]['value'] == 'finalised' ) {
+        drupal_set_message(t('Module version is set to a status of Finalised.  Update access is therefore not available.'), 'Warning');
+        return NODE_ACCESS_DENY;
+      }
+      if ($node->uid == $user->uid) {  //$node->uid == the node creator uid
+        return NODE_ACCESS_ALLOW;
+      }
+    }
+  }
+  elseif ($op == 'delete') {
+    if ($node->type == 'module_version' && $node->uid == $user->uid){
+      return NODE_ACCESS_ALLOW;
     }
   }
   return NODE_ACCESS_IGNORE;
