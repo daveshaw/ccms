@@ -2,7 +2,7 @@
 
 /**
  * @file
- * Form and email functions for sending email to persons 'related' to a course version.
+ * Form and email functions for generating the contact form and sending a contact form email.
  */
 
 /**
