@@ -7966,3 +7966,10 @@ fieldset.filter-wrapper {
   font-weight:bold;
   margin: 0 0 5px;
 }
+.form-item {
+  margin-bottom: 16px;
+  margin-top: 32px;
+}
+.help-block {
+  margin:10px 0;
+}

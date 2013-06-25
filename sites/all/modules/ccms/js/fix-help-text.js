@@ -2,19 +2,19 @@ jQuery(document).ready(function ($) {
 
   // move the help text from below the input field to directly below the field label
 
-  $('.form-item .description').each(function () {  // description is the help text
-    var desc = $(this);
-    var label = desc.siblings('label:first');
+  $('.form-item .help-block').each(function () {
+    var help = $(this);
+    var label = help.parent().parent().children('.control-label');
      if (label.length) {
-       desc.insertAfter(label);
+       help.insertAfter(label);
      }
   })
   // the help text is tangled up in the text format stuff on a filtered text field
   $('.text-format-wrapper .description').each(function () {
-    var desc = $(this);
-    var label = desc.siblings('.form-item').find('label:first');
+    var help = $(this);
+    var label = help.siblings('.form-item').find('label:first');
      if (label.length) {
-        desc.insertAfter(label);
+        help.insertAfter(label);
      }
   }) 
 });
