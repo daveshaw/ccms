@@ -5360,7 +5360,7 @@ table td {
   margin-top:30px;
 }
 
-table.assmnt_methods {
+table.assmnt_methods, table.status_change_table {
   width:100%;
   border:1px solid gray;
 }

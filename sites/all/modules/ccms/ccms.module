@@ -1981,7 +1981,7 @@ function ccms_node_view($node, $view_mode, $langcode) {
       );
       $node->content['ccms_mif_intro'] = array(
         '#type' => 'markup',
-        '#markup' => '<p class="markup-normal">' . $intro_title_string . '</p>' . '<p class="markup-normal">' . $intro_string . '</p>',
+        '#markup' => '<p class="markup-section-heading">' . $intro_title_string . '</p>' . '<p class="markup-normal">' . $intro_string . '</p>',
       );
       $node->content['ccms_mif_section_1'] = array(
         '#type' => 'markup',
