@@ -343,6 +343,7 @@ function _ccms_update_status_tab_title($node) {
  * Implements hook_menu_alter().
  *
  * Change Drupal default menu local tasks ( tab text ) and hide unwanted tabs.
+ * Requires cache clear to activate.
  */
 function ccms_menu_alter(&$items) {
   $items['node/%node']['page callback'] = 'ccms_node_page_view';  //override to allow us to specify a View mode
@@ -354,13 +355,8 @@ function ccms_menu_alter(&$items) {
   $items['node/%node/edit']['title callback'] = '_ccms_local_task_title_override';
   $items['node/%node/edit']['title arguments'] = array(1, 'Update');
   
-  $items['node/%node/revisions']['access callback'] = FALSE; // We don't want to allow access to the standard revisions menu_local_task.
-  
-  // Prevent access to the 'Devel' menu_local_task except for admin user.
-  global $user;
-  if ($user->uid <> 1) {
-   $items['node/%node/devel']['access callback'] = FALSE;
-  }
+  // we never want to see a revisions tab
+  unset($items['node/%node/revisions']);
 }
 
 /**
@@ -2453,7 +2449,14 @@ function ccms_node_access($node, $op, $account) {
   
   global $user;
   
-  if ($op == 'update') {
+  if ($op == 'view') {
+    // node access user reference can't grant View indiscriminately except if it includes
+    // anonymous users which we don't want.  So we do it ourselves.
+    if (in_array('authenticated user', $account->roles)) {
+      return NODE_ACCESS_ALLOW;
+    }
+  }
+  elseif ($op == 'update') {
     
     if ($node->type == 'proposal' || $node->type == 'validation_documentation_set') {
   
