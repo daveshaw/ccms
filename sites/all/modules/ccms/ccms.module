@@ -520,7 +520,7 @@ function ccms_node_insert($node) {
       if ($cv_node = node_load(arg(3))) {
       
         // if we are setting a course version to definitive set any previous version to superseded
-        if (isset($cv_node->field_prev_course_version_ref[$new_cv->language][0]['target_id'])) {
+        if (isset($cv_node->field_prev_course_version_ref[$cv_node->language][0]['target_id'])) {
         // @TODO !!!
         }
     
@@ -713,7 +713,7 @@ function ccms_create_next_course_version($original_cv_nid) {
   $new_cv->field_version[$new_cv->language][0]['value']++;  // inc the version
   $new_cv->title = preg_replace('/\(.+\)/', '( version ' . $new_cv->field_version[$new_cv->language][0]['value'] . ' )', $new_cv->title);
   unset($new_cv->field_cv_status_changes_ref[$new_cv->language]);  //remove the refs to the status change nodes
-  unset($new_cv->field_next_course_version_ref);
+  unset($new_cv->field_next_course_version_ref[$new_cv->language]);
   $new_cv->field_prev_course_version_ref[$new_cv->language][0]['target_id'] = $original_cv_nid;
 
   // create a new cv_status_change node and link to it
@@ -862,7 +862,7 @@ function ccms_create_next_module_version($original_module_nid) {
   unset($new_module->vid);
   unset($new_module->created);
   $new_module->field_version[$new_module->language][0]['value']++;  // inc the version
-  unset($new_module->field_next_module_version_ref);
+  unset($new_module->field_next_module_version_ref[$new_module->language]);
   $new_module->field_prev_module_version_ref[$new_module->language][0]['target_id'] = $original_module_nid;
   $new_module->field_module_status[$new_module->language][0]['value'] = 'not_commenced';
   
@@ -900,7 +900,7 @@ function ccms_node_delete($node) {
       if (isset($node->field_prev_course_version_ref[$node->language][0]['target_id'])) {
         $prev_cv = node_load($node->field_prev_course_version_ref[$node->language][0]['target_id']);
           if ($prev_cv) {
-            unset($prev_cv->field_next_course_version_ref);
+            unset($prev_cv->field_next_course_version_ref[$prev_cv->language]);
             node_save($prev_cv);
           }
       }
@@ -909,7 +909,7 @@ function ccms_node_delete($node) {
       if (isset($node->field_next_course_version_ref[$node->language][0]['target_id'])) {
         $next_cv = node_load($node->field_next_course_version_ref[$node->language][0]['target_id']);
         if ($next_cv) {
-          unset($next_cv->field_next_course_version_ref);
+          unset($next_cv->field_next_course_version_ref[$next_cv->language]);
           node_save($next_cv);
         }
       }
@@ -939,7 +939,7 @@ function ccms_node_delete($node) {
       if (isset($node->field_prev_module_version_ref[$node->language][0]['target_id'])) {
         $prev_module = node_load($node->field_prev_module_version_ref[$node->language][0]['target_id']);
           if ($prev_module) {
-            unset($prev_module->field_next_module_version_ref[$node->language]);
+            unset($prev_module->field_next_module_version_ref[$prev_module->language]);
             node_save($prev_module);
           }
       }
