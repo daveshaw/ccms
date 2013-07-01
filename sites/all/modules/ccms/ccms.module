@@ -1481,7 +1481,9 @@ function no_revision_node_form_submit($form, &$form_state) {
   $form_state['values']['revision'] = 0;
   $form_state['input']['revision'] = NULL;
   
-  $form_state['redirect'] = 'node/' . $form_state['storage']['cv_nid'];  // must have come from the cv node form so head back there
+  if (isset($form_state['storage']['cv_nid'])) {
+    $form_state['redirect'] = 'node/' . $form_state['storage']['cv_nid'];  // must have come from the cv node form so head back there
+  }
 }
 
 /**
