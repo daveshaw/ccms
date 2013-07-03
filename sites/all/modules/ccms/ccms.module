@@ -2383,17 +2383,22 @@ function _ccms_get_cv_nid($node) {
 
     $query->entityCondition('entity_type', 'node')
       ->entityCondition('bundle', 'course_version')
-      ->propertyCondition('status', 1)
       ->fieldCondition($node->type == 'proposal' ? 'field_proposal_ref' : 'field_vds_ref', 'target_id', $node->nid, '=')
       ->addMetaData('account', user_load(1)); // Run the query as user 1.
 
     $result = $query->execute();
-    $nids = array_keys($result['node']); // in our case there should only be one result
-    return $nids[0];
+    if (isset($result['node'])) {
+      $nids = array_keys($result['node']); // in our case there should only be one result
+      return $nids[0];
+    }
+    else {
+      drupal_set_message('_ccms_get_cv_nid(): Node ' .
+                         $node->nid . ' is a ' . $node->type .
+                         ' but does not belong to a course version.',
+                         'warning');
+    }
   }
-  else {
-    return FALSE;
-  }
+  return FALSE;
 }
 
 /**
@@ -2479,17 +2484,21 @@ function ccms_node_access($node, $op, $account) {
     }
   }
   elseif ($op == 'delete') {
-    if ($node->type == 'module_version' && $node->uid == $user->uid){
-      return NODE_ACCESS_ALLOW;
+    if ($node->type == 'module_version') {
+      $courses = _ccms_get_related_courses($node->nid);
+      if (!isset($courses) && $node->uid == $user->uid) {
+        return NODE_ACCESS_ALLOW;
+      }
     }
-  }
   return NODE_ACCESS_IGNORE;
+  }
 }
 
 /**
  * Implements hook_admin_paths_alter().
  *
  * Prevents the Drupal overlay from opening for a bunch of standard admin paths such as the node edit form.
+ * Has the unintended side effect of also killing the admin theme on these paths......
  *
  * @param array $paths
  */
@@ -2498,4 +2507,30 @@ function ccms_admin_paths_alter(&$paths) {
   $paths['node/*/edit'] = FALSE;
   $paths['node/add/course-version'] = FALSE;
   $paths['node/add/module-version'] = FALSE;
+}
+
+/**
+ * Returns course versions that use a module
+ *
+ * @param integer $module_nid
+ * @return array or NULL
+ *   array of nids of courses using a module
+ */
+function _ccms_get_related_courses($module_nid) {
+  $query = new EntityFieldQuery();
+  $query->entityCondition('entity_type', 'node')
+    ->entityCondition('bundle', 'validation_documentation_set')
+    ->fieldCondition('field_modules_ref', 'target_id', $module_nid, '=')
+    ->addMetaData('account', user_load(1)); // Run the query as user 1.
+  $result = $query->execute();
+  if (isset($result['node'])) {
+    $vds_nids = array_keys($result['node']);
+    foreach ($vds_nids as $nid) {
+      $cv_nids[] = _ccms_get_cv_nid(node_load($nid));
+    }
+    return $cv_nids;
+  }
+  else {
+    return NULL;
+  }
 }
